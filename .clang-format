@@ -1,0 +1,10 @@
+---
+Language: Cpp
+BasedOnStyle: WebKit
+IndentWidth: 4
+AlignAfterOpenBracket: Align
+IncludeBlocks: Preserve
+ColumnLimit: 100
+NamespaceIndentation: None
+...
+
