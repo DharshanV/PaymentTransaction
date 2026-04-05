@@ -81,9 +81,8 @@ void submitSendEntry(io_uring* ring, int clientFd, TransactionContext& context)
 {
     io_uring_sqe* submitEntry = IO_URING_CHECK_SQE(io_uring_get_sqe(ring));
 
-    const void* buffer = SERVER_HTTP_RESPONSE;
-    const unsigned nbytes = strlen(SERVER_HTTP_RESPONSE);
-    io_uring_prep_send(submitEntry, clientFd, buffer, nbytes, 0);
+    constexpr unsigned bufLen = std::char_traits<char>::length(SERVER_HTTP_RESPONSE);
+    io_uring_prep_send(submitEntry, clientFd, SERVER_HTTP_RESPONSE, bufLen, 0);
     context.currentOp = TransactionContext::Operation::SEND;
     io_uring_sqe_set_data(submitEntry, &context);
 
