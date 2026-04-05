@@ -10,14 +10,22 @@
 
 static int g_serverFd = -1;
 static std::atomic<bool> g_isRunning { true };
-constexpr const char* SEND_CLIENT_MESSAGE = "Hello from server!";
+
+constexpr int NETWORK_BUFFER_SIZE = (1 << 10);
+constexpr const char* SERVER_HTTP_RESPONSE = "HTTP/1.1 200 OK\r\n"
+                                             "Content-Type: application/json\r\n"
+                                             "Content-Length: 2\r\n"
+                                             "Connection: close\r\n"
+                                             "\r\n"
+                                             "{}";
 
 struct TransactionContext {
     // ==== Network Info ====
     int clientFd = -1;
+    char networkBuffer[NETWORK_BUFFER_SIZE];
 
     // ==== State Machine ====
-    enum class Operation { ACCEPT, SEND, CLOSE };
+    enum class Operation { ACCEPT, READ, SEND, CLOSE };
     Operation currentOp = Operation::ACCEPT;
 };
 
@@ -33,6 +41,8 @@ int setupListeningSocket(const uint16_t port, const int numConnections)
     pay::Logger::SYS()->info("[socket] Address: {}", inet_ntoa(serverAddr.sin_addr));
     pay::Logger::SYS()->info("[socket] Listening on port: {}...", ntohs(serverAddr.sin_port));
 
+    const int enableReuse = 1;
+    IO_CHECK_THROW(setsockopt(serverFd, SOL_SOCKET, SO_REUSEADDR, &enableReuse, sizeof(int)));
     IO_CHECK_THROW(bind(serverFd, (const sockaddr*)&serverAddr, sizeof(sockaddr_in)));
     IO_CHECK_THROW(listen(serverFd, numConnections));
     pay::Logger::SYS()->debug("[socket] Initialized listen() to {} connections", numConnections);
@@ -54,12 +64,25 @@ void submitAcceptEntry(io_uring* ring, int serverFd, sockaddr_in* clientAddr,
     IO_CHECK_THROW(io_uring_submit(ring));
 }
 
+void submitReadEntry(io_uring* ring, int clientFd, TransactionContext& context)
+{
+    io_uring_sqe* submitEntry = IO_URING_CHECK_SQE(io_uring_get_sqe(ring));
+
+    memset(context.networkBuffer, 0, NETWORK_BUFFER_SIZE);
+    io_uring_prep_read(submitEntry, clientFd, context.networkBuffer, NETWORK_BUFFER_SIZE, 0);
+
+    context.currentOp = TransactionContext::Operation::READ;
+    io_uring_sqe_set_data(submitEntry, &context);
+
+    IO_CHECK_THROW(io_uring_submit(ring));
+}
+
 void submitSendEntry(io_uring* ring, int clientFd, TransactionContext& context)
 {
     io_uring_sqe* submitEntry = IO_URING_CHECK_SQE(io_uring_get_sqe(ring));
 
-    const void* buffer = SEND_CLIENT_MESSAGE;
-    const unsigned nbytes = strlen(SEND_CLIENT_MESSAGE);
+    const void* buffer = SERVER_HTTP_RESPONSE;
+    const unsigned nbytes = strlen(SERVER_HTTP_RESPONSE);
     io_uring_prep_send(submitEntry, clientFd, buffer, nbytes, 0);
     context.currentOp = TransactionContext::Operation::SEND;
     io_uring_sqe_set_data(submitEntry, &context);
@@ -132,10 +155,22 @@ int main(int argc, char* argv[])
             const uint16_t clientPort = ntohs(clientAddr.sin_port);
             Logger::CON()->info("[socket] Accepted client connection from: {}:{} on fd: {}",
                                 clientAddrStr, clientPort, context.clientFd);
-            submitSendEntry(ring, context.clientFd, context);
+            submitReadEntry(ring, context.clientFd, context);
 
             // Submit a new accept entry for more clients
             submitAcceptEntry(ring, g_serverFd, &clientAddr, &clientAddrLen);
+            break;
+        }
+        case TransactionContext::Operation::READ: {
+            const int bytesRead = completeEntry->res;
+            if (bytesRead == 0) {
+                Logger::CON()->debug("[socket] Client read 0 bytes on fd: {}", context.clientFd);
+                submitCloseEntry(ring, context.clientFd, context);
+                break;
+            }
+
+            Logger::CON()->debug("[socket] Client sent: {}", context.networkBuffer);
+            submitSendEntry(ring, context.clientFd, context);
             break;
         }
         case TransactionContext::Operation::SEND:
