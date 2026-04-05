@@ -12,10 +12,11 @@ inline int io_check(int ret, const char* call)
     return ret;
 }
 
-inline int io_uring_check(int ret, const char* call)
+inline int io_check_throw(int ret, const char* call)
 {
     if (ret < 0) {
-        pay::Logger::SYS()->error("[io_uring] {} failed: {}", call, strerror(-ret));
+        const auto errMsg = fmt::format("[io_check] {} failed: {}", call, strerror(-ret));
+        throw std::runtime_error(errMsg);
     }
     return ret;
 }
@@ -29,18 +30,18 @@ inline bool io_uring_check_cqe(io_uring_cqe* cqe)
     return true;
 }
 
-inline bool io_uring_check_sqe(io_uring_sqe* sqe)
+inline io_uring_sqe* io_uring_check_sqe(io_uring_sqe* sqe)
 {
     if (!sqe) {
-        pay::Logger::SYS()->error("[io_uring] io_uring_get_sqe failed: ring is full");
-        return false;
+        const auto errMsg = fmt::format("[io_uring] sqe operation failed, ring is full.");
+        throw std::runtime_error(errMsg);
     }
-    return true;
+    return sqe;
 }
 
 } // pay
 
 #define IO_CHECK(call) pay::io_check((call), #call)
-#define IO_URING_CHECK(call) pay::io_uring_check((call), #call)
+#define IO_CHECK_THROW(call) pay::io_check_throw((call), #call)
 #define IO_URING_CHECK_SQE(sqe) pay::io_uring_check_sqe((sqe))
 #define IO_URING_CHECK_CQE(cqe) pay::io_uring_check_cqe((cqe))
