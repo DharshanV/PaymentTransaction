@@ -1,4 +1,5 @@
 #include "Logger.h"
+#include "PaymentHandler.h"
 
 #include <csignal>
 
@@ -12,6 +13,8 @@ int main(int argc, char* argv[])
 
     using namespace pay;
     Logger::setupLoggers();
-    Logger::SYS()->debug("Hello World!");
+
+    IO_URingEngine io_uringEngine;
+    PaymentHandler paymentHandler(io_uringEngine);
     return 0;
 }
