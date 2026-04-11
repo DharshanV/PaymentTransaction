@@ -6,7 +6,7 @@
 namespace pay {
 class IO_URingEngine : public ConnectionSenderBase {
 public:
-    IO_URingEngine(int port, int maxQueueSize);
+    IO_URingEngine(int port, int maxQueueSize, int maxConnectionSize);
 
     void setReceiverConnection(ConnectionReceiverBase* receiverPtr);
 
@@ -26,6 +26,8 @@ private:
     ConnectionReceiverBase* m_receiverPtr;
 
     io_uring m_ring;
+    int m_serverFd;
+
     std::atomic<bool> m_isRunning = { true };
 };
 }

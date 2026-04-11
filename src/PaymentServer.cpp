@@ -21,7 +21,11 @@ int main(int argc, char* argv[])
     using namespace pay;
     Logger::setupLoggers();
 
-    IO_URingEngine io_uringEngine(8080, 100);
+    constexpr int PORT = 8080;
+    constexpr int MAX_QUEUE_SIZE = 100;
+    constexpr int MAX_CONNECTION_SIZE = 20;
+
+    IO_URingEngine io_uringEngine(PORT, MAX_QUEUE_SIZE, MAX_CONNECTION_SIZE);
     PaymentHandler paymentHandler;
 
     paymentHandler.setSenderConnection(&io_uringEngine);
