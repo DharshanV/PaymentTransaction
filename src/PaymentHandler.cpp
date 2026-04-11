@@ -15,16 +15,21 @@ void PaymentHandler::onAccept(int clientFd)
     TransactionContext& context = *contextPtr;
     context.clientFd = clientFd;
     context.currentOp = TransactionContext::Operation::READ;
-    m_networkEngine.postRead(context.clientFd);
+
+    char* buffer = context.networkBuffer.data();
+    const int bufferSize = context.networkBuffer.size();
+    m_networkEngine.postRead(context.clientFd, buffer, bufferSize);
 }
 
-void PaymentHandler::onRead(int clientFd)
+void PaymentHandler::onRead(int clientFd, int bytesRead)
 {
     TransactionContext* contextPtr = getContextMutable(clientFd);
     if (!contextPtr) {
         return;
     }
     TransactionContext& context = *contextPtr;
+    context.bytesRead = bytesRead;
+
     context.currentOp = TransactionContext::Operation::SEND;
     m_networkEngine.postSend(context.clientFd);
 }

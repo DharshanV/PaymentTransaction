@@ -4,6 +4,8 @@
 
 struct PostReadCall {
     int clientFd;
+    char* buffer;
+    int size;
 };
 struct PostSendCall {
     int clientFd;
@@ -14,7 +16,10 @@ struct PostCloseCall {
 
 class MockNetworkEngine : public pay::NetworkEngineBase {
 public:
-    void postRead(int clientFd) override { postReadCalls.push_back({ clientFd }); }
+    void postRead(int clientFd, char* buffer, int size) override
+    {
+        postReadCalls.push_back({ .clientFd = clientFd, .buffer = buffer, .size = size });
+    }
 
     void postSend(int clientFd) override { postSendCalls.push_back({ clientFd }); }
 

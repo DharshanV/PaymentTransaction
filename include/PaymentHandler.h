@@ -13,7 +13,8 @@ public:
     struct TransactionContext {
         // ==== Network Info ====
         int clientFd = -1;
-        char networkBuffer[NETWORK_BUFFER_SIZE] = { 0 };
+        std::array<char, NETWORK_BUFFER_SIZE> networkBuffer = { 0 };
+        int bytesRead = 0;
 
         // ==== State Machine ====
         enum class Operation { ACCEPT, READ, SEND, CLOSE };
@@ -24,7 +25,7 @@ public:
 
     void onAccept(int clientFd);
 
-    void onRead(int clientFd);
+    void onRead(int clientFd, int bytesRead);
 
     void onSend(int clientFd);
 

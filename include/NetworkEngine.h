@@ -4,7 +4,7 @@
 namespace pay {
 class NetworkEngineBase {
 public:
-    virtual void postRead(int clientFd) = 0;
+    virtual void postRead(int clientFd, char* buffer, int size) = 0;
 
     virtual void postSend(int clientFd) = 0;
 
@@ -21,7 +21,7 @@ public:
 
     void stop();
 
-    void postRead(int clientFd) override { }
+    void postRead(int clientFd, char* buffer, int size) override { }
 
     void postSend(int clientFd) override { }
 
