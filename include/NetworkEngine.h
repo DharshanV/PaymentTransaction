@@ -16,20 +16,23 @@ public:
 
     void stop();
 
-    void postAccept() override { }
+    void postAccept() override;
 
-    void postRead(int clientFd, char* buffer, int size) override { }
+    void postRead(int clientFd, char* buffer, int size) override;
 
-    void postSend(int clientFd) override { }
+    void postSend(int clientFd) override;
 
-    void postClose(int clientFd) override { }
+    void postClose(int clientFd) override;
 
 private:
-    ConnectionReceiverBase* m_receiverPtr;
-
     io_uring m_ring;
     int m_serverFd;
-
     std::atomic<bool> m_isRunning = { true };
+
+    ConnectionReceiverBase* m_receiverPtr;
+
+    // Temporary storage to for accept request
+    sockaddr_storage m_currClientAddr = {};
+    socklen_t m_currClientAddrLen = sizeof(sockaddr_storage);
 };
 }

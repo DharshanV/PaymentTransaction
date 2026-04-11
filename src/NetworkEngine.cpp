@@ -81,7 +81,7 @@ namespace pay {
 IO_URingEngine::IO_URingEngine(int port, int maxQueueSize, int maxConnectionSize)
 {
     m_serverFd = setupListeningSocket(port, maxConnectionSize);
-    io_uring_queue_init(maxQueueSize, &m_ring, 0);
+    IO_CHECK_THROW(io_uring_queue_init(maxQueueSize, &m_ring, 0));
 }
 
 void IO_URingEngine::setReceiverConnection(ConnectionReceiverBase* receiverPtr)
@@ -104,6 +104,21 @@ void IO_URingEngine::step()
     }
     io_uring_cqe_seen(&m_ring, completeEntry);
 }
+
+void IO_URingEngine::postAccept()
+{
+    io_uring* ring = &m_ring;
+    io_uring_sqe* submitEntry = IO_URING_CHECK_SQE(io_uring_get_sqe(ring));
+    io_uring_prep_accept(submitEntry, m_serverFd, (sockaddr*)&m_currClientAddr,
+                         &m_currClientAddrLen, 0);
+    io_uring_submit(ring);
+}
+
+void IO_URingEngine::postRead(int clientFd, char* buffer, int size) { }
+
+void IO_URingEngine::postSend(int clientFd) { }
+
+void IO_URingEngine::postClose(int clientFd) { }
 
 void IO_URingEngine::stop()
 {

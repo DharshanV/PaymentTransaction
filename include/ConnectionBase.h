@@ -14,12 +14,16 @@ public:
 
 class ConnectionReceiverBase {
 public:
-    virtual void onAccept(int clientFd) = 0;
+    virtual void onAccept(int res, void* data) = 0;
 
-    virtual void onRead(int clientFd, int bytesRead) = 0;
+    virtual void onRead(int res, void* data) = 0;
 
-    virtual void onSend(int clientFd) = 0;
+    virtual void onSend(int res, void* data) = 0;
 
-    virtual void onClose(int clientFd) = 0;
+    virtual void onClose(int res, void* data) = 0;
+
+    virtual void* allocateData() = 0;
+
+    virtual void freeData(void* data) = 0;
 };
 } // pay

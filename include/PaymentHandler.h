@@ -21,29 +21,19 @@ public:
 
     void setSenderConnection(ConnectionSenderBase* senderPtr);
 
-    void onAccept(int clientFd) override;
+    void onAccept(int res, void* data) override;
 
-    void onRead(int clientFd, int bytesRead) override;
+    void onRead(int res, void* data) override;
 
-    void onSend(int clientFd) override;
+    void onSend(int res, void* data) override;
 
-    void onClose(int clientFd) override;
+    void onClose(int res, void* data) override;
 
-    const TransactionContext* getContext(int clientFd) const;
+    void* allocateData() override { return new TransactionContext(); }
 
-    size_t numActiveContexts() const;
-
-private:
-    TransactionContext* addContext(int clientFd);
-
-    TransactionContext* getContextMutable(int clientFd);
-
-    void releaseContext(int clientFd);
+    void freeData(void* data) override { delete (TransactionContext*)data; }
 
 private:
     ConnectionSenderBase* m_senderPtr;
-
-    std::array<TransactionContext, MAX_CONNECTION_SIZE> m_transactionContexts;
-    std::array<bool, MAX_CONNECTION_SIZE> m_isContextsInUse = { false };
 };
 } // pay

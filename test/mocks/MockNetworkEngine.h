@@ -16,7 +16,7 @@ struct PostCloseCall {
 
 class MockNetworkEngine : public pay::ConnectionSenderBase {
 public:
-    void postAccept() override { }
+    void postAccept() override { postAcceptCalls++; }
 
     void postRead(int clientFd, char* buffer, int size) override
     {
@@ -27,6 +27,7 @@ public:
 
     void postClose(int clientFd) override { postCloseCalls.push_back({ clientFd }); }
 
+    int postAcceptCalls = 0;
     std::vector<PostReadCall> postReadCalls;
     std::vector<PostSendCall> postSendCalls;
     std::vector<PostCloseCall> postCloseCalls;

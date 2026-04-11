@@ -28,7 +28,9 @@ int main(int argc, char* argv[])
     io_uringEngine.setReceiverConnection(&paymentHandler);
 
     // Submit inital accept entry to start server listening for clients
-    io_uringEngine.postAccept();
+    if (io_uringEngine.isRunning()) {
+        io_uringEngine.postAccept();
+    }
 
     g_networkEngine = &io_uringEngine;
     while (io_uringEngine.isRunning()) {
