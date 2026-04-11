@@ -16,6 +16,8 @@ public:
 
     void stop();
 
+    void postAccept() override { }
+
     void postRead(int clientFd, char* buffer, int size) override { }
 
     void postSend(int clientFd) override { }

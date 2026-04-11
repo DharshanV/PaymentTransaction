@@ -3,6 +3,8 @@
 namespace pay {
 class ConnectionSenderBase {
 public:
+    virtual void postAccept() = 0;
+
     virtual void postRead(int clientFd, char* buffer, int size) = 0;
 
     virtual void postSend(int clientFd) = 0;

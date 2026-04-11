@@ -16,6 +16,8 @@ struct PostCloseCall {
 
 class MockNetworkEngine : public pay::ConnectionSenderBase {
 public:
+    void postAccept() override { }
+
     void postRead(int clientFd, char* buffer, int size) override
     {
         postReadCalls.push_back({ .clientFd = clientFd, .buffer = buffer, .size = size });

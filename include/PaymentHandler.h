@@ -1,13 +1,11 @@
 #pragma once
 #include "ConnectionBase.h"
+#include "Constants.h"
 
 #include <array>
 #include <cstring>
 
 namespace pay {
-constexpr int MAX_NUM_CONNECTIONS = (1 << 5);
-constexpr int NETWORK_BUFFER_SIZE = (1 << 9);
-
 class PaymentHandler : public ConnectionReceiverBase {
 public:
     struct TransactionContext {
@@ -45,7 +43,7 @@ private:
 private:
     ConnectionSenderBase* m_senderPtr;
 
-    std::array<TransactionContext, MAX_NUM_CONNECTIONS> m_transactionContexts;
-    std::array<bool, MAX_NUM_CONNECTIONS> m_isContextsInUse = { false };
+    std::array<TransactionContext, MAX_CONNECTION_SIZE> m_transactionContexts;
+    std::array<bool, MAX_CONNECTION_SIZE> m_isContextsInUse = { false };
 };
 } // pay

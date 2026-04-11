@@ -19,6 +19,9 @@ void PaymentHandler::onAccept(int clientFd)
     char* buffer = context.networkBuffer.data();
     const int bufferSize = context.networkBuffer.size();
     m_senderPtr->postRead(context.clientFd, buffer, bufferSize);
+
+    // Sent accept to handle more client
+    m_senderPtr->postAccept();
 }
 
 void PaymentHandler::onRead(int clientFd, int bytesRead)
