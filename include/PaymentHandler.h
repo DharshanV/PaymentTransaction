@@ -1,5 +1,5 @@
 #pragma once
-#include "NetworkEngine.h"
+#include "ConnectionBase.h"
 
 #include <array>
 #include <cstring>
@@ -8,7 +8,7 @@ namespace pay {
 constexpr int MAX_NUM_CONNECTIONS = (1 << 5);
 constexpr int NETWORK_BUFFER_SIZE = (1 << 9);
 
-class PaymentHandler {
+class PaymentHandler : public ConnectionReceiverBase {
 public:
     struct TransactionContext {
         // ==== Network Info ====
@@ -21,15 +21,15 @@ public:
         Operation currentOp = Operation::ACCEPT;
     };
 
-    PaymentHandler(NetworkEngineBase& networkEngine);
+    void setSenderConnection(ConnectionSenderBase* senderPtr);
 
-    void onAccept(int clientFd);
+    void onAccept(int clientFd) override;
 
-    void onRead(int clientFd, int bytesRead);
+    void onRead(int clientFd, int bytesRead) override;
 
-    void onSend(int clientFd);
+    void onSend(int clientFd) override;
 
-    void onClose(int clientFd);
+    void onClose(int clientFd) override;
 
     const TransactionContext* getContext(int clientFd) const;
 
@@ -43,7 +43,8 @@ private:
     void releaseContext(int clientFd);
 
 private:
-    NetworkEngineBase& m_networkEngine;
+    ConnectionSenderBase* m_senderPtr;
+
     std::array<TransactionContext, MAX_NUM_CONNECTIONS> m_transactionContexts;
     std::array<bool, MAX_NUM_CONNECTIONS> m_isContextsInUse = { false };
 };

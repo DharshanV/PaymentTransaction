@@ -14,7 +14,7 @@ struct PostCloseCall {
     int clientFd;
 };
 
-class MockNetworkEngine : public pay::NetworkEngineBase {
+class MockNetworkEngine : public pay::ConnectionSenderBase {
 public:
     void postRead(int clientFd, char* buffer, int size) override
     {

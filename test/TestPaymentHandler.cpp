@@ -8,7 +8,8 @@ TEST_CASE("Single Transaction Logic", "[payment]")
     using TransactionOperation = pay::PaymentHandler::TransactionContext::Operation;
 
     MockNetworkEngine networkEngine;
-    pay::PaymentHandler paymentHandler(networkEngine);
+    pay::PaymentHandler paymentHandler;
+    paymentHandler.setSenderConnection(&networkEngine);
 
     const int clientFd = 123;
 
@@ -134,7 +135,8 @@ TEST_CASE("Multi Transaction Logic", "[payment]")
     using TransactionOperation = pay::PaymentHandler::TransactionContext::Operation;
 
     MockNetworkEngine networkEngine;
-    pay::PaymentHandler paymentHandler(networkEngine);
+    pay::PaymentHandler paymentHandler;
+    paymentHandler.setSenderConnection(&networkEngine);
 
     const int clientFd1 = 123;
     const int clientFd2 = 456;
@@ -160,7 +162,8 @@ TEST_CASE("Transaction Edge Case", "[payment]")
     using TransactionOperation = pay::PaymentHandler::TransactionContext::Operation;
 
     MockNetworkEngine networkEngine;
-    pay::PaymentHandler paymentHandler(networkEngine);
+    pay::PaymentHandler paymentHandler;
+    paymentHandler.setSenderConnection(&networkEngine);
 
     SECTION("no prior onAccept does nothing")
     {
@@ -209,7 +212,8 @@ TEST_CASE("Transaction onRead Buffer Logic", "[payment][read]")
     using TransactionOperation = pay::PaymentHandler::TransactionContext::Operation;
 
     MockNetworkEngine networkEngine;
-    pay::PaymentHandler paymentHandler(networkEngine);
+    pay::PaymentHandler paymentHandler;
+    paymentHandler.setSenderConnection(&networkEngine);
 
     const int clientFd = 123;
 

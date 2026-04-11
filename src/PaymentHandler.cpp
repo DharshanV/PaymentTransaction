@@ -1,9 +1,9 @@
 #include "PaymentHandler.h"
 
 namespace pay {
-PaymentHandler::PaymentHandler(NetworkEngineBase& networkEngine)
-    : m_networkEngine(networkEngine)
+void PaymentHandler::setSenderConnection(ConnectionSenderBase* senderPtr)
 {
+    m_senderPtr = senderPtr;
 }
 
 void PaymentHandler::onAccept(int clientFd)
@@ -18,7 +18,7 @@ void PaymentHandler::onAccept(int clientFd)
 
     char* buffer = context.networkBuffer.data();
     const int bufferSize = context.networkBuffer.size();
-    m_networkEngine.postRead(context.clientFd, buffer, bufferSize);
+    m_senderPtr->postRead(context.clientFd, buffer, bufferSize);
 }
 
 void PaymentHandler::onRead(int clientFd, int bytesRead)
@@ -31,7 +31,7 @@ void PaymentHandler::onRead(int clientFd, int bytesRead)
     context.bytesRead = bytesRead;
 
     context.currentOp = TransactionContext::Operation::SEND;
-    m_networkEngine.postSend(context.clientFd);
+    m_senderPtr->postSend(context.clientFd);
 }
 
 void PaymentHandler::onSend(int clientFd)
@@ -42,7 +42,7 @@ void PaymentHandler::onSend(int clientFd)
     }
     TransactionContext& context = *contextPtr;
     context.currentOp = TransactionContext::Operation::CLOSE;
-    m_networkEngine.postClose(context.clientFd);
+    m_senderPtr->postClose(context.clientFd);
 }
 
 void PaymentHandler::onClose(int clientFd) { releaseContext(clientFd); }

@@ -1,19 +1,14 @@
 #pragma once
+#include "ConnectionBase.h"
+
 #include <liburing.h>
 
 namespace pay {
-class NetworkEngineBase {
-public:
-    virtual void postRead(int clientFd, char* buffer, int size) = 0;
-
-    virtual void postSend(int clientFd) = 0;
-
-    virtual void postClose(int clientFd) = 0;
-};
-
-class IO_URingEngine : public NetworkEngineBase {
+class IO_URingEngine : public ConnectionSenderBase {
 public:
     IO_URingEngine(int port, int maxQueueSize);
+
+    void setReceiverConnection(ConnectionReceiverBase* receiverPtr);
 
     bool isRunning();
 
@@ -28,6 +23,8 @@ public:
     void postClose(int clientFd) override { }
 
 private:
+    ConnectionReceiverBase* m_receiverPtr;
+
     io_uring m_ring;
     std::atomic<bool> m_isRunning = { true };
 };
