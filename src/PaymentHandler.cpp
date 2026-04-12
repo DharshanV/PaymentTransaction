@@ -41,8 +41,12 @@ void PaymentHandler::onRead(int res, void* userData)
     TransactionContext& context = *contextPtr;
 
     if (res <= 0) {
-        Logger::ACK()->warn("[payment] Client '{}' read failed or disconnected: {}",
-                            context.clientFd, strerror(-res));
+        if (res == 0) {
+            Logger::ACK()->info("[payment] Client '{}' disconnected gracefully", context.clientFd);
+        } else {
+            Logger::ACK()->warn("[payment] Client '{}' read failed: {}", context.clientFd,
+                                strerror(-res));
+        }
         m_senderPtr->postClose(contextPtr->clientFd, userData);
         return;
     }
@@ -98,9 +102,7 @@ void PaymentHandler::onClose(int res, void* data)
 void* PaymentHandler::allocateData()
 {
     void* userData = new TransactionContext();
-    if (userData) {
-        Logger::SYS()->debug("[memory] Allocate TransactionContext: {}", userData);
-    }
+    Logger::SYS()->debug("[memory] Allocate TransactionContext: {}", userData);
     return userData;
 }
 

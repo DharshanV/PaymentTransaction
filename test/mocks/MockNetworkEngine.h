@@ -19,16 +19,19 @@ public:
     bool postRead(int clientFd, char* buffer, size_t size, void* data) override
     {
         postReadCalls.push_back({ .clientFd = clientFd, .buffer = buffer, .size = size });
-        return true;
+        return !shouldPostReadFail;
     }
 
     bool postSend(int clientFd, const char* buffer, size_t size, void* data) override
     {
         postSendCalls.push_back({ clientFd });
-        return true;
+        return !shouldPostSendFail;
     }
 
     void postClose(int clientFd, void* data) override { postCloseCalls.push_back({ clientFd }); }
+
+    bool shouldPostReadFail = false;
+    bool shouldPostSendFail = false;
 
     std::vector<PostReadCall> postReadCalls;
     std::vector<PostSendCall> postSendCalls;

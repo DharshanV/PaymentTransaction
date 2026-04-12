@@ -12,7 +12,7 @@ public:
         // ==== Network Info ====
         int clientFd = -1;
         std::array<char, NETWORK_BUFFER_SIZE> networkBuffer = { 0 };
-        int bytesRead = 0;
+        size_t bytesRead = 0;
     };
 
     void setSenderConnection(ConnectionSenderBase* senderPtr);

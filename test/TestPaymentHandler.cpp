@@ -158,6 +158,150 @@ TEST_CASE("Transaction Edge Case", "[payment]")
     }
 }
 
+TEST_CASE("Transaction Error Handling", "[payment][error]")
+{
+    using TransactionContext = pay::PaymentHandler::TransactionContext;
+
+    MockNetworkEngine networkEngine;
+    pay::PaymentHandler paymentHandler;
+    paymentHandler.setSenderConnection(&networkEngine);
+
+    const int clientFd = 123;
+
+    SECTION("onAccept with negative res frees userData and does not postRead")
+    {
+        TransactionContext* ctx = (TransactionContext*)paymentHandler.allocateData();
+
+        // Simulate a failed accept (res < 0)
+        paymentHandler.onAccept(-ECONNABORTED, ctx);
+
+        // No postRead should have been called
+        REQUIRE(networkEngine.postReadCalls.size() == 0);
+        // ctx has been freed by onAccept — do NOT access or free it again
+    }
+
+    SECTION("onRead with res == 0 (graceful disconnect) triggers postClose")
+    {
+        TransactionContext* ctx = (TransactionContext*)paymentHandler.allocateData();
+        paymentHandler.onAccept(clientFd, ctx);
+
+        // Simulate graceful disconnect
+        paymentHandler.onRead(0, ctx);
+
+        REQUIRE(networkEngine.postSendCalls.size() == 0);
+        REQUIRE(networkEngine.postCloseCalls.size() == 1);
+        REQUIRE(networkEngine.postCloseCalls[0].clientFd == clientFd);
+
+        paymentHandler.freeData(ctx);
+    }
+
+    SECTION("onRead with res < 0 (read error) triggers postClose")
+    {
+        TransactionContext* ctx = (TransactionContext*)paymentHandler.allocateData();
+        paymentHandler.onAccept(clientFd, ctx);
+
+        // Simulate a read error
+        paymentHandler.onRead(-EIO, ctx);
+
+        REQUIRE(networkEngine.postSendCalls.size() == 0);
+        REQUIRE(networkEngine.postCloseCalls.size() == 1);
+        REQUIRE(networkEngine.postCloseCalls[0].clientFd == clientFd);
+        // bytesRead should NOT have been updated
+        REQUIRE(ctx->bytesRead == 0);
+
+        paymentHandler.freeData(ctx);
+    }
+
+    SECTION("onSend with res < 0 (send error) triggers postClose")
+    {
+        TransactionContext* ctx = (TransactionContext*)paymentHandler.allocateData();
+        paymentHandler.onAccept(clientFd, ctx);
+        paymentHandler.onRead(10, ctx);
+
+        // Simulate a send error
+        paymentHandler.onSend(-EPIPE, ctx);
+
+        // postClose should still be called (error path)
+        REQUIRE(networkEngine.postCloseCalls.size() == 1);
+        REQUIRE(networkEngine.postCloseCalls[0].clientFd == clientFd);
+
+        paymentHandler.freeData(ctx);
+    }
+
+    SECTION("onClose with res < 0 still resets context")
+    {
+        TransactionContext* ctx = (TransactionContext*)paymentHandler.allocateData();
+        paymentHandler.onAccept(clientFd, ctx);
+        REQUIRE(ctx->clientFd == clientFd);
+
+        // Simulate a close error
+        paymentHandler.onClose(-EIO, ctx);
+
+        // Context should still be reset despite the error
+        REQUIRE(ctx->clientFd == -1);
+        REQUIRE(ctx->bytesRead == 0);
+
+        paymentHandler.freeData(ctx);
+    }
+}
+
+TEST_CASE("Transaction Fallback on Post Failure", "[payment][fallback]")
+{
+    using TransactionContext = pay::PaymentHandler::TransactionContext;
+
+    MockNetworkEngine networkEngine;
+    pay::PaymentHandler paymentHandler;
+    paymentHandler.setSenderConnection(&networkEngine);
+
+    const int clientFd = 123;
+
+    SECTION("postRead failure in onAccept triggers postClose")
+    {
+        networkEngine.shouldPostReadFail = true;
+        TransactionContext* ctx = (TransactionContext*)paymentHandler.allocateData();
+
+        paymentHandler.onAccept(clientFd, ctx);
+
+        // postRead was attempted but failed
+        REQUIRE(networkEngine.postReadCalls.size() == 1);
+        // Fallback: postClose should have been called
+        REQUIRE(networkEngine.postCloseCalls.size() == 1);
+        REQUIRE(networkEngine.postCloseCalls[0].clientFd == clientFd);
+
+        paymentHandler.freeData(ctx);
+    }
+
+    SECTION("postSend failure in onRead triggers postClose")
+    {
+        networkEngine.shouldPostSendFail = true;
+        TransactionContext* ctx = (TransactionContext*)paymentHandler.allocateData();
+
+        paymentHandler.onAccept(clientFd, ctx);
+        paymentHandler.onRead(10, ctx);
+
+        // postSend was attempted but failed
+        REQUIRE(networkEngine.postSendCalls.size() == 1);
+        // Fallback: postClose should have been called
+        REQUIRE(networkEngine.postCloseCalls.size() == 1);
+        REQUIRE(networkEngine.postCloseCalls[0].clientFd == clientFd);
+
+        paymentHandler.freeData(ctx);
+    }
+
+    SECTION("postRead failure does not corrupt context")
+    {
+        networkEngine.shouldPostReadFail = true;
+        TransactionContext* ctx = (TransactionContext*)paymentHandler.allocateData();
+
+        paymentHandler.onAccept(clientFd, ctx);
+
+        // clientFd should still have been set before the postRead attempt
+        REQUIRE(ctx->clientFd == clientFd);
+
+        paymentHandler.freeData(ctx);
+    }
+}
+
 TEST_CASE("Transaction onRead Buffer Logic", "[payment][read]")
 {
     using TransactionContext = pay::PaymentHandler::TransactionContext;
