@@ -33,7 +33,6 @@ inline io_uring_sqe* io_uring_check_sqe(io_uring_sqe* sqe)
 {
     if (!sqe) {
         const auto errMsg = fmt::format("[io_uring] sqe operation failed, ring is full.");
-        throw std::runtime_error(errMsg);
     }
     return sqe;
 }
@@ -157,6 +156,12 @@ void IO_URingEngine::postAccept()
 
     io_uring* ring = &m_ring;
     io_uring_sqe* submitEntry = IO_URING_CHECK_SQE(io_uring_get_sqe(ring));
+    if (!submitEntry) {
+        Logger::CON()->error("[io_uring] Post accept failed, SQE ring is full.");
+        m_receiverPtr->freeData(userData);
+        return;
+    }
+
     io_uring_prep_accept(submitEntry, m_serverFd, (sockaddr*)&m_currClientAddr,
                          &m_currClientAddrLen, 0);
 
@@ -177,6 +182,11 @@ bool IO_URingEngine::postRead(int clientFd, char* buffer, size_t size, void* use
 {
     io_uring* ring = &m_ring;
     io_uring_sqe* submitEntry = IO_URING_CHECK_SQE(io_uring_get_sqe(ring));
+    if (!submitEntry) {
+        Logger::CON()->error("[io_uring] Post read failed, SQE ring is full.");
+        return false;
+    }
+
     io_uring_prep_read(submitEntry, clientFd, buffer, size, 0);
 
     SubmitEntryData* submitData = new SubmitEntryData;
@@ -196,6 +206,11 @@ bool IO_URingEngine::postSend(int clientFd, const char* buffer, size_t size, voi
 {
     io_uring* ring = &m_ring;
     io_uring_sqe* submitEntry = IO_URING_CHECK_SQE(io_uring_get_sqe(ring));
+    if (!submitEntry) {
+        Logger::CON()->error("[io_uring] Post send failed, SQE ring is full.");
+        return false;
+    }
+
     io_uring_prep_send(submitEntry, clientFd, buffer, size, 0);
 
     SubmitEntryData* submitData = new SubmitEntryData;
@@ -215,6 +230,15 @@ void IO_URingEngine::postClose(int clientFd, void* userData)
 {
     io_uring* ring = &m_ring;
     io_uring_sqe* submitEntry = IO_URING_CHECK_SQE(io_uring_get_sqe(ring));
+    if (!submitEntry) {
+        Logger::CON()->error(
+            "[io_uring] Post close failed, SQE ring is full. Closing client '{}' manually.",
+            clientFd);
+        close(clientFd);
+        m_receiverPtr->freeData(userData);
+        return;
+    }
+
     io_uring_prep_close(submitEntry, clientFd);
 
     SubmitEntryData* submitData = new SubmitEntryData;
