@@ -23,7 +23,7 @@ void PaymentHandler::onAccept(int res, void* userData)
 
     TransactionContext& context = *contextPtr;
     context.clientFd = res;
-    Logger::ACK()->debug("[payment] Accept client: {}", context.clientFd);
+    Logger::ACK()->debug("[payment] Accepted client '{}'", context.clientFd);
 
     char* buffer = context.networkBuffer.data();
     const size_t bufferSize = context.networkBuffer.size();

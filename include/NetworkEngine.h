@@ -27,8 +27,11 @@ public:
 private:
     struct SubmitEntryData {
         enum class Operation { ACCEPT, READ, SEND, CLOSE };
-        Operation operation;
-        void* userData;
+
+        sockaddr_storage clientAddr = {};
+        socklen_t clientAddrLen = 0;
+        Operation operation = Operation::ACCEPT;
+        void* userData = nullptr;
     };
 
     io_uring m_ring;
@@ -36,9 +39,5 @@ private:
     std::atomic<bool> m_isRunning = { true };
 
     ConnectionReceiverBase* m_receiverPtr;
-
-    // Temporary storage to for accept request
-    sockaddr_storage m_currClientAddr = {};
-    socklen_t m_currClientAddrLen = sizeof(sockaddr_storage);
 };
 }

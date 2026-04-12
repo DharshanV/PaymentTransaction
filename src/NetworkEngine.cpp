@@ -76,6 +76,25 @@ int setupListeningSocket(const uint16_t port, const int numConnections)
     return serverFd;
 }
 
+void printClientInfo(int clientFd, const sockaddr_storage& clientAddr)
+{
+    uint16_t port = 0;
+    char addrStr[INET6_ADDRSTRLEN] = {};
+
+    if (clientAddr.ss_family == AF_INET6) {
+        const auto* addr6 = reinterpret_cast<const sockaddr_in6*>(&clientAddr);
+        inet_ntop(AF_INET6, &addr6->sin6_addr, addrStr, sizeof(addrStr));
+        port = ntohs(addr6->sin6_port);
+    } else if (clientAddr.ss_family == AF_INET) {
+        const auto* addr4 = reinterpret_cast<const sockaddr_in*>(&clientAddr);
+        inet_ntop(AF_INET, &addr4->sin_addr, addrStr, sizeof(addrStr));
+        port = ntohs(addr4->sin_port);
+    }
+
+    pay::Logger::CON()->info("[socket] Client '{}' connected from '{}:{}'", clientFd, addrStr,
+                             port);
+}
+
 namespace pay {
 IO_URingEngine::IO_URingEngine(int port, int maxQueueSize, int maxConnectionSize)
 {
@@ -116,6 +135,10 @@ void IO_URingEngine::step()
 
     switch (submitData->operation) {
     case SubmitEntryData::Operation::ACCEPT: {
+        if (completeRes >= 0) {
+            printClientInfo(completeRes, submitData->clientAddr);
+        }
+
         m_receiverPtr->onAccept(completeRes, userData);
 
         // Trigger post accept to handle more client
@@ -162,10 +185,11 @@ void IO_URingEngine::postAccept()
         return;
     }
 
-    io_uring_prep_accept(submitEntry, m_serverFd, (sockaddr*)&m_currClientAddr,
-                         &m_currClientAddrLen, 0);
-
     SubmitEntryData* submitData = new SubmitEntryData;
+    submitData->clientAddrLen = sizeof(submitData->clientAddr);
+    io_uring_prep_accept(submitEntry, m_serverFd, (sockaddr*)&submitData->clientAddr,
+                         &submitData->clientAddrLen, 0);
+
     submitData->operation = SubmitEntryData::Operation::ACCEPT;
     submitData->userData = userData;
     io_uring_sqe_set_data(submitEntry, submitData);
