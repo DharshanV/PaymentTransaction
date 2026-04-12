@@ -1,51 +1,35 @@
 #pragma once
 #include "ConnectionBase.h"
+#include "Constants.h"
 
 #include <array>
 #include <cstring>
 
 namespace pay {
-constexpr int MAX_NUM_CONNECTIONS = (1 << 5);
-constexpr int NETWORK_BUFFER_SIZE = (1 << 9);
-
 class PaymentHandler : public ConnectionReceiverBase {
 public:
     struct TransactionContext {
         // ==== Network Info ====
         int clientFd = -1;
         std::array<char, NETWORK_BUFFER_SIZE> networkBuffer = { 0 };
-        int bytesRead = 0;
-
-        // ==== State Machine ====
-        enum class Operation { ACCEPT, READ, SEND, CLOSE };
-        Operation currentOp = Operation::ACCEPT;
+        size_t bytesRead = 0;
     };
 
     void setSenderConnection(ConnectionSenderBase* senderPtr);
 
-    void onAccept(int clientFd) override;
+    void onAccept(int res, void* userData) override;
 
-    void onRead(int clientFd, int bytesRead) override;
+    void onRead(int res, void* userData) override;
 
-    void onSend(int clientFd) override;
+    void onSend(int res, void* userData) override;
 
-    void onClose(int clientFd) override;
+    void onClose(int res, void* userData) override;
 
-    const TransactionContext* getContext(int clientFd) const;
+    void* allocateData() override;
 
-    size_t numActiveContexts() const;
-
-private:
-    TransactionContext* addContext(int clientFd);
-
-    TransactionContext* getContextMutable(int clientFd);
-
-    void releaseContext(int clientFd);
+    void freeData(void* userData) override;
 
 private:
     ConnectionSenderBase* m_senderPtr;
-
-    std::array<TransactionContext, MAX_NUM_CONNECTIONS> m_transactionContexts;
-    std::array<bool, MAX_NUM_CONNECTIONS> m_isContextsInUse = { false };
 };
 } // pay

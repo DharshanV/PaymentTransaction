@@ -5,80 +5,52 @@
 
 TEST_CASE("Single Transaction Logic", "[payment]")
 {
-    using TransactionOperation = pay::PaymentHandler::TransactionContext::Operation;
+    using TransactionContext = pay::PaymentHandler::TransactionContext;
 
     MockNetworkEngine networkEngine;
     pay::PaymentHandler paymentHandler;
     paymentHandler.setSenderConnection(&networkEngine);
 
     const int clientFd = 123;
+    const int readBytes = 10;
+    TransactionContext* ctx = (TransactionContext*)paymentHandler.allocateData();
 
     SECTION("payment onAccept to network postRead")
     {
-        paymentHandler.onAccept(clientFd);
-
-        const auto* ctx = paymentHandler.getContext(clientFd);
-        REQUIRE(ctx != nullptr);
+        paymentHandler.onAccept(clientFd, ctx);
         REQUIRE(ctx->clientFd == clientFd);
-        REQUIRE(ctx->currentOp == TransactionOperation::READ);
-        REQUIRE(paymentHandler.numActiveContexts() == 1);
         REQUIRE(networkEngine.postReadCalls.size() == 1);
         REQUIRE(networkEngine.postReadCalls[0].clientFd == clientFd);
     }
 
     SECTION("payment onRead to network postSend")
     {
-        paymentHandler.onAccept(clientFd);
-        paymentHandler.onRead(clientFd, 0);
+        paymentHandler.onAccept(clientFd, ctx);
+        paymentHandler.onRead(readBytes, ctx);
 
-        const auto* ctx = paymentHandler.getContext(clientFd);
-        REQUIRE(ctx != nullptr);
         REQUIRE(ctx->clientFd == clientFd);
-        REQUIRE(ctx->currentOp == TransactionOperation::SEND);
-        REQUIRE(paymentHandler.numActiveContexts() == 1);
         REQUIRE(networkEngine.postSendCalls.size() == 1);
         REQUIRE(networkEngine.postSendCalls[0].clientFd == clientFd);
     }
 
     SECTION("payment onSend to network postClose")
     {
-        paymentHandler.onAccept(clientFd);
-        paymentHandler.onRead(clientFd, 0);
-        paymentHandler.onSend(clientFd);
+        paymentHandler.onAccept(clientFd, ctx);
+        paymentHandler.onRead(readBytes, ctx);
+        paymentHandler.onSend(0, ctx);
 
-        const auto* ctx = paymentHandler.getContext(clientFd);
-        REQUIRE(ctx != nullptr);
         REQUIRE(ctx->clientFd == clientFd);
-        REQUIRE(ctx->currentOp == TransactionOperation::CLOSE);
-        REQUIRE(paymentHandler.numActiveContexts() == 1);
         REQUIRE(networkEngine.postCloseCalls.size() == 1);
         REQUIRE(networkEngine.postCloseCalls[0].clientFd == clientFd);
     }
 
-    SECTION("payment onClose release context")
+    SECTION("full payment transaction")
     {
-        paymentHandler.onAccept(clientFd);
-        paymentHandler.onRead(clientFd, 0);
-        paymentHandler.onSend(clientFd);
-        paymentHandler.onClose(clientFd);
+        paymentHandler.onAccept(clientFd, ctx);
+        paymentHandler.onRead(readBytes, ctx);
+        paymentHandler.onSend(0, ctx);
+        paymentHandler.onClose(0, ctx);
 
-        const auto* ctx = paymentHandler.getContext(clientFd);
-        REQUIRE(ctx == nullptr);
-        REQUIRE(paymentHandler.numActiveContexts() == 0);
-        REQUIRE(networkEngine.postCloseCalls.size() == 1);
-        REQUIRE(networkEngine.postCloseCalls[0].clientFd == clientFd);
-    }
-
-    SECTION("full payment transcation")
-    {
-        paymentHandler.onAccept(clientFd);
-        paymentHandler.onRead(clientFd, 0);
-        paymentHandler.onSend(clientFd);
-        paymentHandler.onClose(clientFd);
-
-        const auto* ctx = paymentHandler.getContext(clientFd);
-        REQUIRE(ctx == nullptr);
-        REQUIRE(paymentHandler.numActiveContexts() == 0);
         REQUIRE(networkEngine.postReadCalls.size() == 1);
         REQUIRE(networkEngine.postSendCalls.size() == 1);
         REQUIRE(networkEngine.postCloseCalls.size() == 1);
@@ -86,30 +58,24 @@ TEST_CASE("Single Transaction Logic", "[payment]")
 
     SECTION("context reuse after close")
     {
-        paymentHandler.onAccept(clientFd);
-        paymentHandler.onRead(clientFd, 0);
-        paymentHandler.onSend(clientFd);
-        paymentHandler.onClose(clientFd);
+        paymentHandler.onAccept(clientFd, ctx);
+        paymentHandler.onRead(readBytes, ctx);
+        paymentHandler.onSend(0, ctx);
+        paymentHandler.onClose(0, ctx);
 
-        REQUIRE(paymentHandler.numActiveContexts() == 0);
-        REQUIRE(paymentHandler.getContext(clientFd) == nullptr);
+        // Re-accept the same client with a fresh context
+        TransactionContext* ctx2 = (TransactionContext*)paymentHandler.allocateData();
+        paymentHandler.onAccept(clientFd, ctx2);
 
-        // Re-accept the same client
-        paymentHandler.onAccept(clientFd);
+        REQUIRE(ctx2->clientFd == clientFd);
 
-        const auto* ctx = paymentHandler.getContext(clientFd);
-        REQUIRE(paymentHandler.numActiveContexts() == 1);
-        REQUIRE(ctx != nullptr);
-        REQUIRE(ctx->currentOp == TransactionOperation::READ);
+        paymentHandler.freeData(ctx2);
     }
 
     SECTION("onAccept to onClose")
     {
-        paymentHandler.onAccept(clientFd);
-        REQUIRE(paymentHandler.numActiveContexts() == 1);
-
-        paymentHandler.onClose(clientFd);
-        REQUIRE(paymentHandler.numActiveContexts() == 0);
+        paymentHandler.onAccept(clientFd, ctx);
+        paymentHandler.onClose(0, ctx);
 
         REQUIRE(networkEngine.postReadCalls.size() == 1);
         REQUIRE(networkEngine.postSendCalls.size() == 0);
@@ -118,21 +84,20 @@ TEST_CASE("Single Transaction Logic", "[payment]")
 
     SECTION("onAccept to onSend")
     {
-        paymentHandler.onAccept(clientFd);
-        paymentHandler.onSend(clientFd);
+        paymentHandler.onAccept(clientFd, ctx);
+        paymentHandler.onSend(0, ctx);
 
-        const auto* ctx = paymentHandler.getContext(clientFd);
-        REQUIRE(ctx != nullptr);
-        REQUIRE(ctx->currentOp == TransactionOperation::CLOSE);
-        REQUIRE(paymentHandler.numActiveContexts() == 1);
+        REQUIRE(ctx->clientFd == clientFd);
         REQUIRE(networkEngine.postReadCalls.size() == 1);
         REQUIRE(networkEngine.postCloseCalls.size() == 1);
     }
+
+    paymentHandler.freeData(ctx);
 }
 
 TEST_CASE("Multi Transaction Logic", "[payment]")
 {
-    using TransactionOperation = pay::PaymentHandler::TransactionContext::Operation;
+    using TransactionContext = pay::PaymentHandler::TransactionContext;
 
     MockNetworkEngine networkEngine;
     pay::PaymentHandler paymentHandler;
@@ -140,76 +105,62 @@ TEST_CASE("Multi Transaction Logic", "[payment]")
 
     const int clientFd1 = 123;
     const int clientFd2 = 456;
+    const int readBytes = 0;
 
     SECTION("two concurrent transactions do not interfere")
     {
-        paymentHandler.onAccept(clientFd1);
-        paymentHandler.onAccept(clientFd2);
-        REQUIRE(paymentHandler.numActiveContexts() == 2);
+        TransactionContext* ctx1 = (TransactionContext*)paymentHandler.allocateData();
+        TransactionContext* ctx2 = (TransactionContext*)paymentHandler.allocateData();
+
+        paymentHandler.onAccept(clientFd1, ctx1);
+        paymentHandler.onAccept(clientFd2, ctx2);
 
         // clientFd1 progresses independently
-        paymentHandler.onRead(clientFd1, 0);
-        const auto* ctx1 = paymentHandler.getContext(clientFd1);
-        const auto* ctx2 = paymentHandler.getContext(clientFd2);
+        paymentHandler.onRead(readBytes, ctx1);
+
         REQUIRE(ctx1 != ctx2);
-        REQUIRE(ctx1->currentOp == TransactionOperation::SEND);
-        REQUIRE(ctx2->currentOp == TransactionOperation::READ);
+
+        paymentHandler.freeData(ctx1);
+        paymentHandler.freeData(ctx2);
     }
 }
 
 TEST_CASE("Transaction Edge Case", "[payment]")
 {
-    using TransactionOperation = pay::PaymentHandler::TransactionContext::Operation;
+    using TransactionContext = pay::PaymentHandler::TransactionContext;
 
     MockNetworkEngine networkEngine;
     pay::PaymentHandler paymentHandler;
     paymentHandler.setSenderConnection(&networkEngine);
 
-    SECTION("no prior onAccept does nothing")
+    SECTION("null data on callbacks does nothing")
     {
-        paymentHandler.onRead(123, 0);
-        REQUIRE(paymentHandler.numActiveContexts() == 0);
+        paymentHandler.onAccept(123, nullptr);
+        REQUIRE(networkEngine.postReadCalls.size() == 0);
+
+        paymentHandler.onRead(0, nullptr);
         REQUIRE(networkEngine.postSendCalls.size() == 0);
 
-        paymentHandler.onSend(123);
-        REQUIRE(paymentHandler.numActiveContexts() == 0);
+        paymentHandler.onSend(0, nullptr);
         REQUIRE(networkEngine.postCloseCalls.size() == 0);
 
-        paymentHandler.onClose(123);
-        REQUIRE(paymentHandler.numActiveContexts() == 0);
+        paymentHandler.onClose(0, nullptr);
     }
 
-    SECTION("onAccept same clientFd twice does not duplicate context")
+    SECTION("fresh context has default state")
     {
-        paymentHandler.onAccept(123);
-        paymentHandler.onAccept(123);
-        REQUIRE(paymentHandler.numActiveContexts() == 1);
-        REQUIRE(networkEngine.postReadCalls.size() == 1);
-    }
+        TransactionContext* ctx = (TransactionContext*)paymentHandler.allocateData();
 
-    SECTION("onClose with no prior onAccept does nothing")
-    {
-        paymentHandler.onClose(123);
-        REQUIRE(paymentHandler.numActiveContexts() == 0);
-    }
+        REQUIRE(ctx->clientFd == -1);
+        REQUIRE(ctx->bytesRead == 0);
 
-    SECTION("onRead after onClose does nothing")
-    {
-        paymentHandler.onAccept(123);
-        paymentHandler.onRead(123, 0);
-        paymentHandler.onSend(123);
-        paymentHandler.onClose(123);
-
-        // On read on closed client does nothing
-        paymentHandler.onRead(123, 0);
-        REQUIRE(networkEngine.postSendCalls.size() == 1);
-        REQUIRE(paymentHandler.numActiveContexts() == 0);
+        paymentHandler.freeData(ctx);
     }
 }
 
-TEST_CASE("Transaction onRead Buffer Logic", "[payment][read]")
+TEST_CASE("Transaction Error Handling", "[payment][error]")
 {
-    using TransactionOperation = pay::PaymentHandler::TransactionContext::Operation;
+    using TransactionContext = pay::PaymentHandler::TransactionContext;
 
     MockNetworkEngine networkEngine;
     pay::PaymentHandler paymentHandler;
@@ -217,44 +168,177 @@ TEST_CASE("Transaction onRead Buffer Logic", "[payment][read]")
 
     const int clientFd = 123;
 
-    SECTION("postRead is called with correct buffer and size")
+    SECTION("onAccept with negative res frees userData and does not postRead")
     {
-        paymentHandler.onAccept(clientFd);
+        TransactionContext* ctx = (TransactionContext*)paymentHandler.allocateData();
 
+        // Simulate a failed accept (res < 0)
+        paymentHandler.onAccept(-ECONNABORTED, ctx);
+
+        // No postRead should have been called
+        REQUIRE(networkEngine.postReadCalls.size() == 0);
+        // ctx has been freed by onAccept — do NOT access or free it again
+    }
+
+    SECTION("onRead with res == 0 (graceful disconnect) triggers postClose")
+    {
+        TransactionContext* ctx = (TransactionContext*)paymentHandler.allocateData();
+        paymentHandler.onAccept(clientFd, ctx);
+
+        // Simulate graceful disconnect
+        paymentHandler.onRead(0, ctx);
+
+        REQUIRE(networkEngine.postSendCalls.size() == 0);
+        REQUIRE(networkEngine.postCloseCalls.size() == 1);
+        REQUIRE(networkEngine.postCloseCalls[0].clientFd == clientFd);
+
+        paymentHandler.freeData(ctx);
+    }
+
+    SECTION("onRead with res < 0 (read error) triggers postClose")
+    {
+        TransactionContext* ctx = (TransactionContext*)paymentHandler.allocateData();
+        paymentHandler.onAccept(clientFd, ctx);
+
+        // Simulate a read error
+        paymentHandler.onRead(-EIO, ctx);
+
+        REQUIRE(networkEngine.postSendCalls.size() == 0);
+        REQUIRE(networkEngine.postCloseCalls.size() == 1);
+        REQUIRE(networkEngine.postCloseCalls[0].clientFd == clientFd);
+        // bytesRead should NOT have been updated
+        REQUIRE(ctx->bytesRead == 0);
+
+        paymentHandler.freeData(ctx);
+    }
+
+    SECTION("onSend with res < 0 (send error) triggers postClose")
+    {
+        TransactionContext* ctx = (TransactionContext*)paymentHandler.allocateData();
+        paymentHandler.onAccept(clientFd, ctx);
+        paymentHandler.onRead(10, ctx);
+
+        // Simulate a send error
+        paymentHandler.onSend(-EPIPE, ctx);
+
+        // postClose should still be called (error path)
+        REQUIRE(networkEngine.postCloseCalls.size() == 1);
+        REQUIRE(networkEngine.postCloseCalls[0].clientFd == clientFd);
+
+        paymentHandler.freeData(ctx);
+    }
+
+    SECTION("onClose with res < 0 still resets context")
+    {
+        TransactionContext* ctx = (TransactionContext*)paymentHandler.allocateData();
+        paymentHandler.onAccept(clientFd, ctx);
+        REQUIRE(ctx->clientFd == clientFd);
+
+        // Simulate a close error
+        paymentHandler.onClose(-EIO, ctx);
+
+        // Context should still be reset despite the error
+        REQUIRE(ctx->clientFd == -1);
+        REQUIRE(ctx->bytesRead == 0);
+
+        paymentHandler.freeData(ctx);
+    }
+}
+
+TEST_CASE("Transaction Fallback on Post Failure", "[payment][fallback]")
+{
+    using TransactionContext = pay::PaymentHandler::TransactionContext;
+
+    MockNetworkEngine networkEngine;
+    pay::PaymentHandler paymentHandler;
+    paymentHandler.setSenderConnection(&networkEngine);
+
+    const int clientFd = 123;
+
+    SECTION("postRead failure in onAccept triggers postClose")
+    {
+        networkEngine.shouldPostReadFail = true;
+        TransactionContext* ctx = (TransactionContext*)paymentHandler.allocateData();
+
+        paymentHandler.onAccept(clientFd, ctx);
+
+        // postRead was attempted but failed
+        REQUIRE(networkEngine.postReadCalls.size() == 1);
+        // Fallback: postClose should have been called
+        REQUIRE(networkEngine.postCloseCalls.size() == 1);
+        REQUIRE(networkEngine.postCloseCalls[0].clientFd == clientFd);
+
+        paymentHandler.freeData(ctx);
+    }
+
+    SECTION("postSend failure in onRead triggers postClose")
+    {
+        networkEngine.shouldPostSendFail = true;
+        TransactionContext* ctx = (TransactionContext*)paymentHandler.allocateData();
+
+        paymentHandler.onAccept(clientFd, ctx);
+        paymentHandler.onRead(10, ctx);
+
+        // postSend was attempted but failed
+        REQUIRE(networkEngine.postSendCalls.size() == 1);
+        // Fallback: postClose should have been called
+        REQUIRE(networkEngine.postCloseCalls.size() == 1);
+        REQUIRE(networkEngine.postCloseCalls[0].clientFd == clientFd);
+
+        paymentHandler.freeData(ctx);
+    }
+
+    SECTION("postRead failure does not corrupt context")
+    {
+        networkEngine.shouldPostReadFail = true;
+        TransactionContext* ctx = (TransactionContext*)paymentHandler.allocateData();
+
+        paymentHandler.onAccept(clientFd, ctx);
+
+        // clientFd should still have been set before the postRead attempt
+        REQUIRE(ctx->clientFd == clientFd);
+
+        paymentHandler.freeData(ctx);
+    }
+}
+
+TEST_CASE("Transaction onRead Buffer Logic", "[payment][read]")
+{
+    using TransactionContext = pay::PaymentHandler::TransactionContext;
+
+    MockNetworkEngine networkEngine;
+    pay::PaymentHandler paymentHandler;
+    paymentHandler.setSenderConnection(&networkEngine);
+
+    const int clientFd = 123;
+    TransactionContext* ctx = (TransactionContext*)paymentHandler.allocateData();
+
+    SECTION("postRead receives correct context buffer")
+    {
+        paymentHandler.onAccept(clientFd, ctx);
+
+        REQUIRE(networkEngine.postReadCalls.size() == 1);
         const auto& call = networkEngine.postReadCalls[0];
         REQUIRE(call.clientFd == clientFd);
         REQUIRE(call.buffer != nullptr);
         REQUIRE(call.size == pay::NETWORK_BUFFER_SIZE);
-    }
-
-    SECTION("postRead buffer pointer matches context networkBuffer")
-    {
-        paymentHandler.onAccept(clientFd);
-
-        const auto* ctx = paymentHandler.getContext(clientFd);
-        const auto& call = networkEngine.postReadCalls.back();
-
-        REQUIRE(ctx != nullptr);
-        REQUIRE(ctx->clientFd == clientFd);
-        // same buffer, no copy
+        // zero-copy: postRead buffer points directly into context
         REQUIRE(call.buffer == ctx->networkBuffer.data());
     }
 
     SECTION("bytesRead stored in context after onRead")
     {
-        paymentHandler.onAccept(clientFd);
+        paymentHandler.onAccept(clientFd, ctx);
         const int bytesRead = 128;
-        paymentHandler.onRead(clientFd, bytesRead);
+        paymentHandler.onRead(bytesRead, ctx);
 
-        const auto* ctx = paymentHandler.getContext(clientFd);
-        REQUIRE(ctx != nullptr);
         REQUIRE(ctx->clientFd == clientFd);
         REQUIRE(ctx->bytesRead == bytesRead);
     }
 
     SECTION("bytesRead from mock server write")
     {
-        paymentHandler.onAccept(clientFd);
+        paymentHandler.onAccept(clientFd, ctx);
 
         const char* MOCK_SERVER_WRITE = "Hello from mock server!";
 
@@ -264,11 +348,8 @@ TEST_CASE("Transaction onRead Buffer Logic", "[payment][read]")
         memcpy(call.buffer, MOCK_SERVER_WRITE, bytesWrite);
 
         // Notify PaymentHandler that bytes have been read
-        const int bytesRead = bytesWrite;
-        paymentHandler.onRead(clientFd, bytesWrite);
+        paymentHandler.onRead(bytesWrite, ctx);
 
-        const auto* ctx = paymentHandler.getContext(clientFd);
-        REQUIRE(ctx != nullptr);
         REQUIRE(ctx->clientFd == clientFd);
         REQUIRE(ctx->bytesRead == bytesWrite);
         REQUIRE(strcmp(MOCK_SERVER_WRITE, ctx->networkBuffer.data()) == 0);
@@ -277,35 +358,31 @@ TEST_CASE("Transaction onRead Buffer Logic", "[payment][read]")
     SECTION("data not corrupted after close and new accept with different messages")
     {
         // === First connection ===
-        paymentHandler.onAccept(clientFd);
+        paymentHandler.onAccept(clientFd, ctx);
 
         const char* FIRST_WRITE = "First payment request!";
         {
             const auto& readCall = networkEngine.postReadCalls.back();
             const int bytesWrite = std::char_traits<char>::length(FIRST_WRITE);
             memcpy(readCall.buffer, FIRST_WRITE, bytesWrite);
-            paymentHandler.onRead(clientFd, bytesWrite);
+            paymentHandler.onRead(bytesWrite, ctx);
 
-            const auto* ctx = paymentHandler.getContext(clientFd);
             REQUIRE(ctx->bytesRead == bytesWrite);
             REQUIRE(strcmp(FIRST_WRITE, ctx->networkBuffer.data()) == 0);
         }
 
         // Clean up before second connection
-        paymentHandler.onClose(clientFd);
-        REQUIRE(paymentHandler.getContext(clientFd) == nullptr);
-        REQUIRE(paymentHandler.numActiveContexts() == 0);
+        paymentHandler.onClose(0, ctx);
 
         // === Second connection - same fd, different message ===
-        paymentHandler.onAccept(clientFd);
+        TransactionContext* ctx2 = (TransactionContext*)paymentHandler.allocateData();
+        paymentHandler.onAccept(clientFd, ctx2);
         {
-            const auto* ctx = paymentHandler.getContext(clientFd);
-
             // Context is all clear
-            REQUIRE(ctx != nullptr);
-            REQUIRE(ctx->bytesRead == 0);
-            REQUIRE(ctx->networkBuffer[0] == 0);
-            REQUIRE(strcmp(FIRST_WRITE, ctx->networkBuffer.data()) != 0);
+            REQUIRE(ctx2 != nullptr);
+            REQUIRE(ctx2->bytesRead == 0);
+            REQUIRE(ctx2->networkBuffer[0] == 0);
+            REQUIRE(strcmp(FIRST_WRITE, ctx2->networkBuffer.data()) != 0);
         }
 
         const char* SECOND_WRITE = "Second payment request!";
@@ -313,12 +390,15 @@ TEST_CASE("Transaction onRead Buffer Logic", "[payment][read]")
             const auto& readCall = networkEngine.postReadCalls.back();
             const int bytesWrite = std::char_traits<char>::length(SECOND_WRITE);
             memcpy(readCall.buffer, SECOND_WRITE, bytesWrite);
-            paymentHandler.onRead(clientFd, bytesWrite);
+            paymentHandler.onRead(bytesWrite, ctx2);
 
-            const auto* ctx = paymentHandler.getContext(clientFd);
-            REQUIRE(ctx->bytesRead == bytesWrite);
-            REQUIRE(strcmp(SECOND_WRITE, ctx->networkBuffer.data()) == 0);
-            REQUIRE(strcmp(FIRST_WRITE, ctx->networkBuffer.data()) != 0);
+            REQUIRE(ctx2->bytesRead == bytesWrite);
+            REQUIRE(strcmp(SECOND_WRITE, ctx2->networkBuffer.data()) == 0);
+            REQUIRE(strcmp(FIRST_WRITE, ctx2->networkBuffer.data()) != 0);
         }
+
+        paymentHandler.freeData(ctx2);
     }
+
+    paymentHandler.freeData(ctx);
 }

@@ -5,7 +5,7 @@
 struct PostReadCall {
     int clientFd;
     char* buffer;
-    int size;
+    size_t size;
 };
 struct PostSendCall {
     int clientFd;
@@ -16,14 +16,22 @@ struct PostCloseCall {
 
 class MockNetworkEngine : public pay::ConnectionSenderBase {
 public:
-    void postRead(int clientFd, char* buffer, int size) override
+    bool postRead(int clientFd, char* buffer, size_t size, void* data) override
     {
         postReadCalls.push_back({ .clientFd = clientFd, .buffer = buffer, .size = size });
+        return !shouldPostReadFail;
     }
 
-    void postSend(int clientFd) override { postSendCalls.push_back({ clientFd }); }
+    bool postSend(int clientFd, const char* buffer, size_t size, void* data) override
+    {
+        postSendCalls.push_back({ clientFd });
+        return !shouldPostSendFail;
+    }
 
-    void postClose(int clientFd) override { postCloseCalls.push_back({ clientFd }); }
+    void postClose(int clientFd, void* data) override { postCloseCalls.push_back({ clientFd }); }
+
+    bool shouldPostReadFail = false;
+    bool shouldPostSendFail = false;
 
     std::vector<PostReadCall> postReadCalls;
     std::vector<PostSendCall> postSendCalls;

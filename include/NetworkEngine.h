@@ -6,7 +6,7 @@
 namespace pay {
 class IO_URingEngine : public ConnectionSenderBase {
 public:
-    IO_URingEngine(int port, int maxQueueSize);
+    IO_URingEngine(int port, int maxQueueSize, int maxConnectionSize);
 
     void setReceiverConnection(ConnectionReceiverBase* receiverPtr);
 
@@ -16,16 +16,28 @@ public:
 
     void stop();
 
-    void postRead(int clientFd, char* buffer, int size) override { }
+    void postAccept();
 
-    void postSend(int clientFd) override { }
+    bool postRead(int clientFd, char* buffer, size_t size, void* userData) override;
 
-    void postClose(int clientFd) override { }
+    bool postSend(int clientFd, const char* buffer, size_t size, void* userData) override;
+
+    void postClose(int clientFd, void* userData) override;
 
 private:
-    ConnectionReceiverBase* m_receiverPtr;
+    struct SubmitEntryData {
+        enum class Operation { ACCEPT, READ, SEND, CLOSE };
+
+        sockaddr_storage clientAddr = {};
+        socklen_t clientAddrLen = 0;
+        Operation operation = Operation::ACCEPT;
+        void* userData = nullptr;
+    };
 
     io_uring m_ring;
+    int m_serverFd;
     std::atomic<bool> m_isRunning = { true };
+
+    ConnectionReceiverBase* m_receiverPtr;
 };
 }

@@ -4,6 +4,15 @@
 
 namespace pay {
 namespace Logger {
+void enableLogger(std::shared_ptr<spdlog::logger> logger)
+{
+#ifndef NDEBUG
+    logger->set_level(spdlog::level::debug);
+#else
+    logger->set_level(spdlog::level::warn);
+#endif
+}
+
 void setupLoggers()
 {
     auto systemLogger = spdlog::stdout_color_mt("SYS");
@@ -17,6 +26,16 @@ void setupLoggers()
 #ifndef NDEBUG
     spdlog::set_level(spdlog::level::debug);
 #endif
+
+    // disable all loggers
+    spdlog::apply_all(
+        [](std::shared_ptr<spdlog::logger> logger) { logger->set_level(spdlog::level::off); });
+
+    enableLogger(systemLogger);
+    enableLogger(connectionLogger);
+    enableLogger(validationLogger);
+    enableLogger(ackLogger);
+    enableLogger(logLogger);
 }
 } // Logger
 } // pay

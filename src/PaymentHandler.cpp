@@ -1,117 +1,115 @@
 #include "PaymentHandler.h"
 
+#include <Logger.h>
+
 namespace pay {
 void PaymentHandler::setSenderConnection(ConnectionSenderBase* senderPtr)
 {
     m_senderPtr = senderPtr;
 }
 
-void PaymentHandler::onAccept(int clientFd)
+void PaymentHandler::onAccept(int res, void* userData)
 {
-    TransactionContext* contextPtr = addContext(clientFd);
+    TransactionContext* contextPtr = (TransactionContext*)userData;
     if (!contextPtr) {
         return;
     }
+
+    if (res < 0) {
+        Logger::ACK()->warn("[payment] Accept failed: {}", strerror(-res));
+        this->freeData(userData);
+        return;
+    }
+
     TransactionContext& context = *contextPtr;
-    context.clientFd = clientFd;
-    context.currentOp = TransactionContext::Operation::READ;
+    context.clientFd = res;
+    Logger::ACK()->debug("[payment] Accepted client '{}'", context.clientFd);
 
     char* buffer = context.networkBuffer.data();
-    const int bufferSize = context.networkBuffer.size();
-    m_senderPtr->postRead(context.clientFd, buffer, bufferSize);
+    const size_t bufferSize = context.networkBuffer.size();
+    if (!m_senderPtr->postRead(context.clientFd, buffer, bufferSize, userData)) {
+        m_senderPtr->postClose(context.clientFd, userData);
+    }
 }
 
-void PaymentHandler::onRead(int clientFd, int bytesRead)
+void PaymentHandler::onRead(int res, void* userData)
 {
-    TransactionContext* contextPtr = getContextMutable(clientFd);
+    TransactionContext* contextPtr = (TransactionContext*)userData;
     if (!contextPtr) {
         return;
     }
     TransactionContext& context = *contextPtr;
-    context.bytesRead = bytesRead;
 
-    context.currentOp = TransactionContext::Operation::SEND;
-    m_senderPtr->postSend(context.clientFd);
+    if (res <= 0) {
+        if (res == 0) {
+            Logger::ACK()->info("[payment] Client '{}' disconnected gracefully", context.clientFd);
+        } else {
+            Logger::ACK()->warn("[payment] Client '{}' read failed: {}", context.clientFd,
+                                strerror(-res));
+        }
+        m_senderPtr->postClose(contextPtr->clientFd, userData);
+        return;
+    }
+    context.bytesRead = res;
+
+    const char* networkBuffer = context.networkBuffer.data();
+    const std::string_view readStr(networkBuffer, context.bytesRead);
+    Logger::ACK()->debug("[payment] Client '{}' sent:\n{}", context.clientFd, readStr);
+
+    if (!m_senderPtr->postSend(context.clientFd, networkBuffer, context.bytesRead, userData)) {
+        m_senderPtr->postClose(context.clientFd, userData);
+    }
 }
 
-void PaymentHandler::onSend(int clientFd)
+void PaymentHandler::onSend(int res, void* userData)
 {
-    TransactionContext* contextPtr = getContextMutable(clientFd);
+    TransactionContext* contextPtr = (TransactionContext*)userData;
     if (!contextPtr) {
         return;
     }
     TransactionContext& context = *contextPtr;
-    context.currentOp = TransactionContext::Operation::CLOSE;
-    m_senderPtr->postClose(context.clientFd);
+
+    if (res < 0) {
+        Logger::ACK()->warn("[payment] Client '{}' send failed: {}", context.clientFd,
+                            strerror(-res));
+        m_senderPtr->postClose(contextPtr->clientFd, userData);
+        return;
+    }
+    Logger::ACK()->debug("[payment] Client '{}' did receive data", context.clientFd);
+
+    m_senderPtr->postClose(context.clientFd, userData);
 }
 
-void PaymentHandler::onClose(int clientFd) { releaseContext(clientFd); }
-
-PaymentHandler::TransactionContext* PaymentHandler::addContext(int clientFd)
+void PaymentHandler::onClose(int res, void* data)
 {
-    // If it already exists, return nullptr
-    for (size_t i = 0; i < m_transactionContexts.size(); i++) {
-        const TransactionContext& context = m_transactionContexts[i];
-        if (m_isContextsInUse[i] && context.clientFd == clientFd) {
-            return nullptr;
-        }
+    TransactionContext* contextPtr = (TransactionContext*)data;
+    if (!contextPtr) {
+        return;
+    }
+    TransactionContext& context = *contextPtr;
+
+    if (res < 0) {
+        Logger::ACK()->warn("[payment] Client '{}' close failed: {}", context.clientFd,
+                            strerror(-res));
+    } else {
+        Logger::ACK()->debug("[payment] Client '{}' closed", context.clientFd);
     }
 
-    // Acquire and return a fresh context for clientFd
-    for (size_t i = 0; i < m_transactionContexts.size(); i++) {
-        if (!m_isContextsInUse[i]) {
-            TransactionContext& context = m_transactionContexts[i];
-            context.clientFd = clientFd;
-            m_isContextsInUse[i] = true;
-            return &context;
-        }
-    }
-
-    return nullptr;
+    // Reset the context data
+    context = TransactionContext {};
 }
 
-const PaymentHandler::TransactionContext* PaymentHandler::getContext(int clientFd) const
+void* PaymentHandler::allocateData()
 {
-    for (size_t i = 0; i < m_transactionContexts.size(); i++) {
-        const TransactionContext& context = m_transactionContexts[i];
-        if (m_isContextsInUse[i] && context.clientFd == clientFd) {
-            return &context;
-        }
-    }
-    return nullptr;
+    void* userData = new TransactionContext();
+    Logger::SYS()->debug("[memory] Allocate TransactionContext: {}", userData);
+    return userData;
 }
 
-PaymentHandler::TransactionContext* PaymentHandler::getContextMutable(int clientFd)
+void PaymentHandler::freeData(void* userData)
 {
-    for (size_t i = 0; i < m_transactionContexts.size(); i++) {
-        TransactionContext& context = m_transactionContexts[i];
-        if (m_isContextsInUse[i] && context.clientFd == clientFd) {
-            return &context;
-        }
-    }
-    return nullptr;
+    Logger::SYS()->debug("[memory] Free TransactionContext: {}", userData);
+    delete (TransactionContext*)userData;
 }
 
-void PaymentHandler::releaseContext(int clientFd)
-{
-    for (size_t i = 0; i < m_transactionContexts.size(); i++) {
-        TransactionContext& context = m_transactionContexts[i];
-        if (m_isContextsInUse[i] && context.clientFd == clientFd) {
-            context = TransactionContext {};
-            m_isContextsInUse[i] = false;
-            return;
-        }
-    }
-}
-
-size_t PaymentHandler::numActiveContexts() const
-{
-    size_t total = 0;
-    for (size_t i = 0; i < m_transactionContexts.size(); i++) {
-        if (m_isContextsInUse[i]) {
-            ++total;
-        }
-    }
-    return total;
-}
 } // pay

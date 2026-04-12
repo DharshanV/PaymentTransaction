@@ -21,11 +21,16 @@ int main(int argc, char* argv[])
     using namespace pay;
     Logger::setupLoggers();
 
-    IO_URingEngine io_uringEngine(8080, 100);
+    IO_URingEngine io_uringEngine(SERVER_PORT, MAX_QUEUE_SIZE, MAX_CONNECTION_SIZE);
     PaymentHandler paymentHandler;
 
     paymentHandler.setSenderConnection(&io_uringEngine);
     io_uringEngine.setReceiverConnection(&paymentHandler);
+
+    // Submit inital accept entry to start server listening for clients
+    if (io_uringEngine.isRunning()) {
+        io_uringEngine.postAccept();
+    }
 
     g_networkEngine = &io_uringEngine;
     while (io_uringEngine.isRunning()) {
