@@ -16,15 +16,21 @@ public:
 
     void stop();
 
-    void postAccept() override;
+    void postAccept();
 
-    void postRead(int clientFd, char* buffer, int size) override;
+    void postRead(int clientFd, char* buffer, size_t size, void* data) override;
 
-    void postSend(int clientFd) override;
+    void postSend(int clientFd, const char* buffer, size_t size, void* data) override;
 
-    void postClose(int clientFd) override;
+    void postClose(int clientFd, void* data) override;
 
 private:
+    struct SubmitEntryData {
+        enum class Operation { ACCEPT, READ, SEND, CLOSE };
+        Operation operation;
+        void* userData;
+    };
+
     io_uring m_ring;
     int m_serverFd;
     std::atomic<bool> m_isRunning = { true };

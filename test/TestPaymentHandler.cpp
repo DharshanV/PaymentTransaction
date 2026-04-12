@@ -23,7 +23,6 @@ TEST_CASE("Single Transaction Logic", "[payment]")
         REQUIRE(ctx->currentOp == TransactionOperation::READ);
         REQUIRE(networkEngine.postReadCalls.size() == 1);
         REQUIRE(networkEngine.postReadCalls[0].clientFd == clientFd);
-        REQUIRE(networkEngine.postAcceptCalls == 1);
     }
 
     SECTION("payment onRead to network postSend")
@@ -148,7 +147,6 @@ TEST_CASE("Transaction Edge Case", "[payment]")
     {
         paymentHandler.onAccept(123, nullptr);
         REQUIRE(networkEngine.postReadCalls.size() == 0);
-        REQUIRE(networkEngine.postAcceptCalls == 0);
 
         paymentHandler.onRead(0, nullptr);
         REQUIRE(networkEngine.postSendCalls.size() == 0);

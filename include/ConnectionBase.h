@@ -1,15 +1,15 @@
 #pragma once
 
+#include <stddef.h>
+
 namespace pay {
 class ConnectionSenderBase {
 public:
-    virtual void postAccept() = 0;
+    virtual void postRead(int clientFd, char* buffer, size_t size, void* data) = 0;
 
-    virtual void postRead(int clientFd, char* buffer, int size) = 0;
+    virtual void postSend(int clientFd, const char* buffer, size_t size, void* data) = 0;
 
-    virtual void postSend(int clientFd) = 0;
-
-    virtual void postClose(int clientFd) = 0;
+    virtual void postClose(int clientFd, void* data) = 0;
 };
 
 class ConnectionReceiverBase {
@@ -24,6 +24,6 @@ public:
 
     virtual void* allocateData() = 0;
 
-    virtual void freeData(void* data) = 0;
+    virtual void freeData(void* userData) = 0;
 };
 } // pay

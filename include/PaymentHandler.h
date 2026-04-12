@@ -29,9 +29,9 @@ public:
 
     void onClose(int res, void* data) override;
 
-    void* allocateData() override { return new TransactionContext(); }
+    void* allocateData() override;
 
-    void freeData(void* data) override { delete (TransactionContext*)data; }
+    void freeData(void* userData) override;
 
 private:
     ConnectionSenderBase* m_senderPtr;

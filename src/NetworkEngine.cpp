@@ -50,7 +50,7 @@ int setupListeningSocket(const uint16_t port, const int numConnections)
     pay::Logger::CON()->info("[socket] IPv6 TCP Socket created, fd: {}", serverFd);
 
     sockaddr_in6 serverAddr;
-    memset(&serverAddr, 0, sizeof(sockaddr_in));
+    memset(&serverAddr, 0, sizeof(sockaddr_in6));
     serverAddr.sin6_family = AF_INET6;
     serverAddr.sin6_addr = in6addr_any;
     serverAddr.sin6_port = htons(port);
@@ -102,34 +102,150 @@ void IO_URingEngine::step()
         }
         return;
     }
+
+    // Gather complete entry result before marking it seen.
+    const int completeRes = completeEntry->res;
+    SubmitEntryData* submitData = (SubmitEntryData*)io_uring_cqe_get_data(completeEntry);
     io_uring_cqe_seen(&m_ring, completeEntry);
+
+    if (!submitData) {
+        // TODO: Handle invalid submit data
+        return;
+    }
+
+    void* userData = submitData->userData;
+
+    switch (submitData->operation) {
+    case SubmitEntryData::Operation::ACCEPT: {
+        m_receiverPtr->onAccept(completeRes, userData);
+
+        // Trigger post accept to handle more client
+        this->postAccept();
+        break;
+    }
+    case SubmitEntryData::Operation::READ: {
+        m_receiverPtr->onRead(completeRes, userData);
+        break;
+    }
+    case SubmitEntryData::Operation::SEND: {
+        m_receiverPtr->onSend(completeRes, userData);
+        break;
+    }
+    case SubmitEntryData::Operation::CLOSE: {
+        m_receiverPtr->onClose(completeRes, userData);
+        if (userData) {
+            m_receiverPtr->freeData(userData);
+        }
+        break;
+    }
+    default: {
+        // TODO: Handle invalid submit operation
+        Logger::CON()->error("Invalid operation on submit entry.");
+    }
+    }
+
+    delete submitData;
 }
 
 void IO_URingEngine::postAccept()
 {
+    void* userData = m_receiverPtr->allocateData();
+    if (!userData) {
+        Logger::SYS()->error("[memory] Failed to allocate user data for post accept.");
+        return;
+    }
+
     io_uring* ring = &m_ring;
     io_uring_sqe* submitEntry = IO_URING_CHECK_SQE(io_uring_get_sqe(ring));
     io_uring_prep_accept(submitEntry, m_serverFd, (sockaddr*)&m_currClientAddr,
                          &m_currClientAddrLen, 0);
-    io_uring_submit(ring);
+
+    SubmitEntryData* submitData = new SubmitEntryData;
+    submitData->operation = SubmitEntryData::Operation::ACCEPT;
+    submitData->userData = userData;
+    io_uring_sqe_set_data(submitEntry, submitData);
+
+    if (IO_CHECK(io_uring_submit(ring)) >= 0) {
+        Logger::CON()->debug("[io_uring] Client accept submit");
+    } else {
+        m_receiverPtr->freeData(userData);
+    }
 }
 
-void IO_URingEngine::postRead(int clientFd, char* buffer, int size) { }
+void IO_URingEngine::postRead(int clientFd, char* buffer, size_t size, void* data)
+{
+    io_uring* ring = &m_ring;
+    io_uring_sqe* submitEntry = IO_URING_CHECK_SQE(io_uring_get_sqe(ring));
+    io_uring_prep_read(submitEntry, clientFd, buffer, size, 0);
 
-void IO_URingEngine::postSend(int clientFd) { }
+    SubmitEntryData* submitData = new SubmitEntryData;
+    submitData->operation = SubmitEntryData::Operation::READ;
+    submitData->userData = data;
+    io_uring_sqe_set_data(submitEntry, submitData);
 
-void IO_URingEngine::postClose(int clientFd) { }
+    if (IO_CHECK(io_uring_submit(ring)) >= 0) {
+        Logger::CON()->debug("[io_uring] Client '{}' submit read request", clientFd);
+    }
+}
+
+void IO_URingEngine::postSend(int clientFd, const char* buffer, size_t size, void* data)
+{
+    io_uring* ring = &m_ring;
+    io_uring_sqe* submitEntry = IO_URING_CHECK_SQE(io_uring_get_sqe(ring));
+    io_uring_prep_send(submitEntry, clientFd, buffer, size, 0);
+
+    SubmitEntryData* submitData = new SubmitEntryData;
+    submitData->operation = SubmitEntryData::Operation::SEND;
+    submitData->userData = data;
+    io_uring_sqe_set_data(submitEntry, submitData);
+
+    if (IO_CHECK(io_uring_submit(ring)) >= 0) {
+        Logger::CON()->debug("[io_uring] Client '{}' submit send request", clientFd);
+    }
+}
+
+void IO_URingEngine::postClose(int clientFd, void* data)
+{
+    io_uring* ring = &m_ring;
+    io_uring_sqe* submitEntry = IO_URING_CHECK_SQE(io_uring_get_sqe(ring));
+    io_uring_prep_close(submitEntry, clientFd);
+
+    SubmitEntryData* submitData = new SubmitEntryData;
+    submitData->operation = SubmitEntryData::Operation::CLOSE;
+    submitData->userData = data;
+    io_uring_sqe_set_data(submitEntry, submitData);
+
+    if (IO_CHECK(io_uring_submit(ring)) >= 0) {
+        Logger::CON()->debug("[io_uring] Client '{}' submit close request.", clientFd);
+    }
+}
 
 void IO_URingEngine::stop()
 {
     m_isRunning = false;
 
-    pay::Logger::SYS()->info("[program] IO ring exit");
-    io_uring_queue_exit(&m_ring);
-
+    // Shutdown socket first to stop new connections
     pay::Logger::CON()->info("[socket] Server shutdown");
     shutdown(m_serverFd, SHUT_RDWR);
     close(m_serverFd);
+
+    // Drain remaining complete entries
+    io_uring_cqe* completeEntry;
+    while (io_uring_peek_cqe(&m_ring, &completeEntry) == 0) {
+        void* data = io_uring_cqe_get_data(completeEntry);
+        if (data) {
+            SubmitEntryData* submitData = (SubmitEntryData*)data;
+            void* userData = submitData->userData;
+            if (userData) {
+                m_receiverPtr->freeData(userData);
+            }
+            delete submitData;
+        }
+        io_uring_cqe_seen(&m_ring, completeEntry);
+    }
+
+    pay::Logger::SYS()->info("[program] IO ring exit");
+    io_uring_queue_exit(&m_ring);
 }
 
 } // pay
