@@ -16,14 +16,16 @@ struct PostCloseCall {
 
 class MockNetworkEngine : public pay::ConnectionSenderBase {
 public:
-    void postRead(int clientFd, char* buffer, size_t size, void* data) override
+    bool postRead(int clientFd, char* buffer, size_t size, void* data) override
     {
         postReadCalls.push_back({ .clientFd = clientFd, .buffer = buffer, .size = size });
+        return true;
     }
 
-    void postSend(int clientFd, const char* buffer, size_t size, void* data) override
+    bool postSend(int clientFd, const char* buffer, size_t size, void* data) override
     {
         postSendCalls.push_back({ clientFd });
+        return true;
     }
 
     void postClose(int clientFd, void* data) override { postCloseCalls.push_back({ clientFd }); }

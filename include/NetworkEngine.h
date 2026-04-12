@@ -18,9 +18,9 @@ public:
 
     void postAccept();
 
-    void postRead(int clientFd, char* buffer, size_t size, void* userData) override;
+    bool postRead(int clientFd, char* buffer, size_t size, void* userData) override;
 
-    void postSend(int clientFd, const char* buffer, size_t size, void* userData) override;
+    bool postSend(int clientFd, const char* buffer, size_t size, void* userData) override;
 
     void postClose(int clientFd, void* userData) override;
 

@@ -27,7 +27,9 @@ void PaymentHandler::onAccept(int res, void* userData)
 
     char* buffer = context.networkBuffer.data();
     const size_t bufferSize = context.networkBuffer.size();
-    m_senderPtr->postRead(context.clientFd, buffer, bufferSize, userData);
+    if (!m_senderPtr->postRead(context.clientFd, buffer, bufferSize, userData)) {
+        m_senderPtr->postClose(context.clientFd, userData);
+    }
 }
 
 void PaymentHandler::onRead(int res, void* userData)
@@ -46,11 +48,13 @@ void PaymentHandler::onRead(int res, void* userData)
     }
     context.bytesRead = res;
 
-    const std::string_view readStr(context.networkBuffer.data(), context.bytesRead);
+    const char* networkBuffer = context.networkBuffer.data();
+    const std::string_view readStr(networkBuffer, context.bytesRead);
     Logger::ACK()->debug("[payment] Client '{}' sent:\n{}", context.clientFd, readStr);
 
-    m_senderPtr->postSend(context.clientFd, context.networkBuffer.data(), context.bytesRead,
-                          userData);
+    if (!m_senderPtr->postSend(context.clientFd, networkBuffer, context.bytesRead, userData)) {
+        m_senderPtr->postClose(context.clientFd, userData);
+    }
 }
 
 void PaymentHandler::onSend(int res, void* userData)
@@ -83,10 +87,9 @@ void PaymentHandler::onClose(int res, void* data)
     if (res < 0) {
         Logger::ACK()->warn("[payment] Client '{}' close failed: {}", context.clientFd,
                             strerror(-res));
-        // TODO: Should I re-postClose on the clientFd?
-        return;
+    } else {
+        Logger::ACK()->debug("[payment] Client '{}' closed", context.clientFd);
     }
-    Logger::ACK()->debug("[payment] Client '{}' closed", context.clientFd);
 
     // Reset the context data
     context = TransactionContext {};

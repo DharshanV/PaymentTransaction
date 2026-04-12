@@ -5,9 +5,9 @@
 namespace pay {
 class ConnectionSenderBase {
 public:
-    virtual void postRead(int clientFd, char* buffer, size_t size, void* userData) = 0;
+    virtual bool postRead(int clientFd, char* buffer, size_t size, void* userData) = 0;
 
-    virtual void postSend(int clientFd, const char* buffer, size_t size, void* userData) = 0;
+    virtual bool postSend(int clientFd, const char* buffer, size_t size, void* userData) = 0;
 
     virtual void postClose(int clientFd, void* userData) = 0;
 };
