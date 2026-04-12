@@ -18,11 +18,11 @@ public:
 
     void postAccept();
 
-    void postRead(int clientFd, char* buffer, size_t size, void* data) override;
+    void postRead(int clientFd, char* buffer, size_t size, void* userData) override;
 
-    void postSend(int clientFd, const char* buffer, size_t size, void* data) override;
+    void postSend(int clientFd, const char* buffer, size_t size, void* userData) override;
 
-    void postClose(int clientFd, void* data) override;
+    void postClose(int clientFd, void* userData) override;
 
 private:
     struct SubmitEntryData {

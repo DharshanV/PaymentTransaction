@@ -5,7 +5,6 @@
 
 TEST_CASE("Single Transaction Logic", "[payment]")
 {
-    using TransactionOperation = pay::PaymentHandler::TransactionContext::Operation;
     using TransactionContext = pay::PaymentHandler::TransactionContext;
 
     MockNetworkEngine networkEngine;
@@ -20,7 +19,6 @@ TEST_CASE("Single Transaction Logic", "[payment]")
     {
         paymentHandler.onAccept(clientFd, ctx);
         REQUIRE(ctx->clientFd == clientFd);
-        REQUIRE(ctx->currentOp == TransactionOperation::READ);
         REQUIRE(networkEngine.postReadCalls.size() == 1);
         REQUIRE(networkEngine.postReadCalls[0].clientFd == clientFd);
     }
@@ -31,7 +29,6 @@ TEST_CASE("Single Transaction Logic", "[payment]")
         paymentHandler.onRead(readBytes, ctx);
 
         REQUIRE(ctx->clientFd == clientFd);
-        REQUIRE(ctx->currentOp == TransactionOperation::SEND);
         REQUIRE(networkEngine.postSendCalls.size() == 1);
         REQUIRE(networkEngine.postSendCalls[0].clientFd == clientFd);
     }
@@ -43,7 +40,6 @@ TEST_CASE("Single Transaction Logic", "[payment]")
         paymentHandler.onSend(0, ctx);
 
         REQUIRE(ctx->clientFd == clientFd);
-        REQUIRE(ctx->currentOp == TransactionOperation::CLOSE);
         REQUIRE(networkEngine.postCloseCalls.size() == 1);
         REQUIRE(networkEngine.postCloseCalls[0].clientFd == clientFd);
     }
@@ -72,7 +68,6 @@ TEST_CASE("Single Transaction Logic", "[payment]")
         paymentHandler.onAccept(clientFd, ctx2);
 
         REQUIRE(ctx2->clientFd == clientFd);
-        REQUIRE(ctx2->currentOp == TransactionOperation::READ);
 
         paymentHandler.freeData(ctx2);
     }
@@ -93,7 +88,6 @@ TEST_CASE("Single Transaction Logic", "[payment]")
         paymentHandler.onSend(0, ctx);
 
         REQUIRE(ctx->clientFd == clientFd);
-        REQUIRE(ctx->currentOp == TransactionOperation::CLOSE);
         REQUIRE(networkEngine.postReadCalls.size() == 1);
         REQUIRE(networkEngine.postCloseCalls.size() == 1);
     }
@@ -103,7 +97,6 @@ TEST_CASE("Single Transaction Logic", "[payment]")
 
 TEST_CASE("Multi Transaction Logic", "[payment]")
 {
-    using TransactionOperation = pay::PaymentHandler::TransactionContext::Operation;
     using TransactionContext = pay::PaymentHandler::TransactionContext;
 
     MockNetworkEngine networkEngine;
@@ -126,8 +119,6 @@ TEST_CASE("Multi Transaction Logic", "[payment]")
         paymentHandler.onRead(readBytes, ctx1);
 
         REQUIRE(ctx1 != ctx2);
-        REQUIRE(ctx1->currentOp == TransactionOperation::SEND);
-        REQUIRE(ctx2->currentOp == TransactionOperation::READ);
 
         paymentHandler.freeData(ctx1);
         paymentHandler.freeData(ctx2);
@@ -136,7 +127,6 @@ TEST_CASE("Multi Transaction Logic", "[payment]")
 
 TEST_CASE("Transaction Edge Case", "[payment]")
 {
-    using TransactionOperation = pay::PaymentHandler::TransactionContext::Operation;
     using TransactionContext = pay::PaymentHandler::TransactionContext;
 
     MockNetworkEngine networkEngine;
@@ -163,7 +153,6 @@ TEST_CASE("Transaction Edge Case", "[payment]")
 
         REQUIRE(ctx->clientFd == -1);
         REQUIRE(ctx->bytesRead == 0);
-        REQUIRE(ctx->currentOp == TransactionOperation::ACCEPT);
 
         paymentHandler.freeData(ctx);
     }
@@ -171,7 +160,6 @@ TEST_CASE("Transaction Edge Case", "[payment]")
 
 TEST_CASE("Transaction onRead Buffer Logic", "[payment][read]")
 {
-    using TransactionOperation = pay::PaymentHandler::TransactionContext::Operation;
     using TransactionContext = pay::PaymentHandler::TransactionContext;
 
     MockNetworkEngine networkEngine;

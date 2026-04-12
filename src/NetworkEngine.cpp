@@ -169,10 +169,11 @@ void IO_URingEngine::postAccept()
         Logger::CON()->debug("[io_uring] Client accept submit");
     } else {
         m_receiverPtr->freeData(userData);
+        delete submitData;
     }
 }
 
-void IO_URingEngine::postRead(int clientFd, char* buffer, size_t size, void* data)
+void IO_URingEngine::postRead(int clientFd, char* buffer, size_t size, void* userData)
 {
     io_uring* ring = &m_ring;
     io_uring_sqe* submitEntry = IO_URING_CHECK_SQE(io_uring_get_sqe(ring));
@@ -180,7 +181,7 @@ void IO_URingEngine::postRead(int clientFd, char* buffer, size_t size, void* dat
 
     SubmitEntryData* submitData = new SubmitEntryData;
     submitData->operation = SubmitEntryData::Operation::READ;
-    submitData->userData = data;
+    submitData->userData = userData;
     io_uring_sqe_set_data(submitEntry, submitData);
 
     if (IO_CHECK(io_uring_submit(ring)) >= 0) {
@@ -188,7 +189,7 @@ void IO_URingEngine::postRead(int clientFd, char* buffer, size_t size, void* dat
     }
 }
 
-void IO_URingEngine::postSend(int clientFd, const char* buffer, size_t size, void* data)
+void IO_URingEngine::postSend(int clientFd, const char* buffer, size_t size, void* userData)
 {
     io_uring* ring = &m_ring;
     io_uring_sqe* submitEntry = IO_URING_CHECK_SQE(io_uring_get_sqe(ring));
@@ -196,7 +197,7 @@ void IO_URingEngine::postSend(int clientFd, const char* buffer, size_t size, voi
 
     SubmitEntryData* submitData = new SubmitEntryData;
     submitData->operation = SubmitEntryData::Operation::SEND;
-    submitData->userData = data;
+    submitData->userData = userData;
     io_uring_sqe_set_data(submitEntry, submitData);
 
     if (IO_CHECK(io_uring_submit(ring)) >= 0) {
@@ -204,7 +205,7 @@ void IO_URingEngine::postSend(int clientFd, const char* buffer, size_t size, voi
     }
 }
 
-void IO_URingEngine::postClose(int clientFd, void* data)
+void IO_URingEngine::postClose(int clientFd, void* userData)
 {
     io_uring* ring = &m_ring;
     io_uring_sqe* submitEntry = IO_URING_CHECK_SQE(io_uring_get_sqe(ring));
@@ -212,7 +213,7 @@ void IO_URingEngine::postClose(int clientFd, void* data)
 
     SubmitEntryData* submitData = new SubmitEntryData;
     submitData->operation = SubmitEntryData::Operation::CLOSE;
-    submitData->userData = data;
+    submitData->userData = userData;
     io_uring_sqe_set_data(submitEntry, submitData);
 
     if (IO_CHECK(io_uring_submit(ring)) >= 0) {
