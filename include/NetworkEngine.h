@@ -26,10 +26,15 @@ public:
 
 private:
     struct SubmitEntryData {
-        enum class Operation { ACCEPT, READ, SEND, CLOSE };
+        enum class Operation { ACCEPT, READ, SEND, CLOSE, TIMEOUT };
 
+        // Accept Data
         sockaddr_storage clientAddr = {};
         socklen_t clientAddrLen = 0;
+
+        // Read Data
+        __kernel_timespec timeoutSpec = {};
+
         Operation operation = Operation::ACCEPT;
         void* userData = nullptr;
     };

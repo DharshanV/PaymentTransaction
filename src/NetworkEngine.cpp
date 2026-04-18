@@ -1,6 +1,8 @@
 #include "NetworkEngine.h"
 
-#include <Logger.h>
+#include "Constants.h"
+#include "Logger.h"
+
 #include <arpa/inet.h>
 
 namespace pay {
@@ -52,8 +54,7 @@ int setupListeningSocket(const uint16_t port, const int numConnections)
 
     IO_CHECK_THROW(bind(serverFd, (const sockaddr*)&serverAddr, sizeof(sockaddr_in6)));
     IO_CHECK_THROW(listen(serverFd, numConnections));
-    pay::Logger::CON()->debug("[socket] Server bind() and listen() to {} connections",
-                              numConnections);
+    pay::Logger::CON()->info("[socket] Server bind/listen to {} connections", numConnections);
 
     return serverFd;
 }
@@ -142,6 +143,12 @@ void IO_URingEngine::step()
         }
         break;
     }
+    case SubmitEntryData::Operation::TIMEOUT: {
+        if (completeRes == -ECANCELED) {
+            Logger::CON()->debug("[io_uring] Read timeout cancelled userData: {}", userData);
+        }
+        break;
+    }
     default: {
         // TODO: Handle invalid submit operation
         Logger::CON()->error("Invalid operation on submit entry.");
@@ -188,25 +195,44 @@ void IO_URingEngine::postAccept()
 bool IO_URingEngine::postRead(int clientFd, char* buffer, size_t size, void* userData)
 {
     io_uring* ring = &m_ring;
-    io_uring_sqe* submitEntry = io_uring_get_sqe(ring);
-    if (!submitEntry) {
+    io_uring_sqe* readSubmitEntry = io_uring_get_sqe(ring);
+    if (!readSubmitEntry) {
         Logger::CON()->error("[io_uring] Post read failed, SQE ring is full.");
         return false;
     }
 
-    io_uring_prep_read(submitEntry, clientFd, buffer, size, 0);
+    io_uring_sqe* timeoutSubmitEntry = io_uring_get_sqe(ring);
+    if (!timeoutSubmitEntry) {
+        Logger::CON()->error("[io_uring] Post read-timeout failed, SQE ring is full.");
+        return false;
+    }
 
-    SubmitEntryData* submitData = new SubmitEntryData;
-    submitData->operation = SubmitEntryData::Operation::READ;
-    submitData->userData = userData;
-    io_uring_sqe_set_data(submitEntry, submitData);
+    SubmitEntryData* readSubmitData = new SubmitEntryData;
+    readSubmitData->operation = SubmitEntryData::Operation::READ;
+    readSubmitData->userData = userData;
+
+    io_uring_prep_read(readSubmitEntry, clientFd, buffer, size, 0);
+    io_uring_sqe_set_data(readSubmitEntry, readSubmitData);
+
+    // Link read with next submit (timeout) entry
+    readSubmitEntry->flags |= IOSQE_IO_LINK;
+
+    SubmitEntryData* timeoutSubmitData = new SubmitEntryData;
+    timeoutSubmitData->userData = userData;
+    timeoutSubmitData->operation = SubmitEntryData::Operation::TIMEOUT;
+    timeoutSubmitData->timeoutSpec = { .tv_sec = READ_CONN_TIMEOUT_SECS, .tv_nsec = 0 };
+
+    io_uring_prep_link_timeout(timeoutSubmitEntry, &timeoutSubmitData->timeoutSpec, 0);
+    io_uring_sqe_set_data(timeoutSubmitEntry, timeoutSubmitData);
 
     if (IO_CHECK(io_uring_submit(ring)) < 0) {
-        delete submitData;
+        delete readSubmitData;
+        delete timeoutSubmitData;
         return false;
     }
 
     Logger::CON()->debug("[io_uring] Client '{}' submit read request", clientFd);
+    Logger::CON()->debug("[io_uring] Read timeout linked userData: {}", userData);
     return true;
 }
 
