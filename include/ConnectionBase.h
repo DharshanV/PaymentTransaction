@@ -14,9 +14,9 @@ public:
 
 class ConnectionReceiverBase {
 public:
-    virtual void onAccept(int res, void* userData) = 0;
+    virtual void onAccept(int clientFd, void* userData) = 0;
 
-    virtual void onRead(int res, void* userData) = 0;
+    virtual void onRead(int bytesRead, void* userData) = 0;
 
     virtual void onSend(int res, void* userData) = 0;
 

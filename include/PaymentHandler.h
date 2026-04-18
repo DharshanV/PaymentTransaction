@@ -17,9 +17,9 @@ public:
 
     void setSenderConnection(ConnectionSenderBase* senderPtr);
 
-    void onAccept(int res, void* userData) override;
+    void onAccept(int clientFd, void* userData) override;
 
-    void onRead(int res, void* userData) override;
+    void onRead(int bytesRead, void* userData) override;
 
     void onSend(int res, void* userData) override;
 

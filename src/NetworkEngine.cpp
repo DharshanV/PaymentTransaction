@@ -20,28 +20,10 @@ inline int io_check_throw(int ret, const char* call)
     }
     return ret;
 }
-
-inline int io_uring_check_cqe(io_uring_cqe* cqe)
-{
-    if (cqe->res < 0) {
-        pay::Logger::SYS()->error("[io_uring] cqe operation failed: {}", strerror(-cqe->res));
-    }
-    return cqe->res;
-}
-
-inline io_uring_sqe* io_uring_check_sqe(io_uring_sqe* sqe)
-{
-    if (!sqe) {
-        const auto errMsg = fmt::format("[io_uring] sqe operation failed, ring is full.");
-    }
-    return sqe;
-}
 } // pay
 
 #define IO_CHECK(call) pay::io_check((call), #call)
 #define IO_CHECK_THROW(call) pay::io_check_throw((call), #call)
-#define IO_URING_CHECK_SQE(sqe) pay::io_uring_check_sqe((sqe))
-#define IO_URING_CHECK_CQE(cqe) pay::io_uring_check_cqe((cqe))
 
 int setupListeningSocket(const uint16_t port, const int numConnections)
 {
@@ -178,7 +160,7 @@ void IO_URingEngine::postAccept()
     }
 
     io_uring* ring = &m_ring;
-    io_uring_sqe* submitEntry = IO_URING_CHECK_SQE(io_uring_get_sqe(ring));
+    io_uring_sqe* submitEntry = io_uring_get_sqe(ring);
     if (!submitEntry) {
         Logger::CON()->error("[io_uring] Post accept failed, SQE ring is full.");
         m_receiverPtr->freeData(userData);
@@ -194,18 +176,19 @@ void IO_URingEngine::postAccept()
     submitData->userData = userData;
     io_uring_sqe_set_data(submitEntry, submitData);
 
-    if (IO_CHECK(io_uring_submit(ring)) >= 0) {
-        Logger::CON()->debug("[io_uring] Client accept submit");
-    } else {
+    if (IO_CHECK(io_uring_submit(ring)) < 0) {
         m_receiverPtr->freeData(userData);
         delete submitData;
+        return;
     }
+
+    Logger::CON()->debug("[io_uring] Client accept submit");
 }
 
 bool IO_URingEngine::postRead(int clientFd, char* buffer, size_t size, void* userData)
 {
     io_uring* ring = &m_ring;
-    io_uring_sqe* submitEntry = IO_URING_CHECK_SQE(io_uring_get_sqe(ring));
+    io_uring_sqe* submitEntry = io_uring_get_sqe(ring);
     if (!submitEntry) {
         Logger::CON()->error("[io_uring] Post read failed, SQE ring is full.");
         return false;
@@ -218,18 +201,19 @@ bool IO_URingEngine::postRead(int clientFd, char* buffer, size_t size, void* use
     submitData->userData = userData;
     io_uring_sqe_set_data(submitEntry, submitData);
 
-    if (IO_CHECK(io_uring_submit(ring)) >= 0) {
-        Logger::CON()->debug("[io_uring] Client '{}' submit read request", clientFd);
-        return true;
+    if (IO_CHECK(io_uring_submit(ring)) < 0) {
+        delete submitData;
+        return false;
     }
-    delete submitData;
-    return false;
+
+    Logger::CON()->debug("[io_uring] Client '{}' submit read request", clientFd);
+    return true;
 }
 
 bool IO_URingEngine::postSend(int clientFd, const char* buffer, size_t size, void* userData)
 {
     io_uring* ring = &m_ring;
-    io_uring_sqe* submitEntry = IO_URING_CHECK_SQE(io_uring_get_sqe(ring));
+    io_uring_sqe* submitEntry = io_uring_get_sqe(ring);
     if (!submitEntry) {
         Logger::CON()->error("[io_uring] Post send failed, SQE ring is full.");
         return false;
@@ -242,18 +226,19 @@ bool IO_URingEngine::postSend(int clientFd, const char* buffer, size_t size, voi
     submitData->userData = userData;
     io_uring_sqe_set_data(submitEntry, submitData);
 
-    if (IO_CHECK(io_uring_submit(ring)) >= 0) {
-        Logger::CON()->debug("[io_uring] Client '{}' submit send request", clientFd);
-        return true;
+    if (IO_CHECK(io_uring_submit(ring)) < 0) {
+        delete submitData;
+        return false;
     }
-    delete submitData;
-    return false;
+
+    Logger::CON()->debug("[io_uring] Client '{}' submit send request", clientFd);
+    return true;
 }
 
 void IO_URingEngine::postClose(int clientFd, void* userData)
 {
     io_uring* ring = &m_ring;
-    io_uring_sqe* submitEntry = IO_URING_CHECK_SQE(io_uring_get_sqe(ring));
+    io_uring_sqe* submitEntry = io_uring_get_sqe(ring);
     if (!submitEntry) {
         Logger::CON()->error(
             "[io_uring] Post close failed, SQE ring is full. Closing client '{}' manually.",
@@ -270,9 +255,7 @@ void IO_URingEngine::postClose(int clientFd, void* userData)
     submitData->userData = userData;
     io_uring_sqe_set_data(submitEntry, submitData);
 
-    if (IO_CHECK(io_uring_submit(ring)) >= 0) {
-        Logger::CON()->debug("[io_uring] Client '{}' submit close request.", clientFd);
-    } else {
+    if (IO_CHECK(io_uring_submit(ring)) < 0) {
         // io_uring close submit entry failed, close manually
         Logger::CON()->warn("[io_uring] Client '{}' close submit failed, closing manually.",
                             clientFd);
@@ -280,6 +263,8 @@ void IO_URingEngine::postClose(int clientFd, void* userData)
         m_receiverPtr->freeData(userData);
         delete submitData;
     }
+
+    Logger::CON()->debug("[io_uring] Client '{}' submit close request.", clientFd);
 }
 
 void IO_URingEngine::stop()
