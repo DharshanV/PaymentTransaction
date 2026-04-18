@@ -43,6 +43,8 @@ void PaymentHandler::onRead(int bytesRead, void* userData)
     if (bytesRead <= 0) {
         if (bytesRead == 0) {
             Logger::ACK()->info("[payment] Client '{}' disconnected gracefully", context.clientFd);
+        } else if (bytesRead == -ETIME) {
+            Logger::ACK()->warn("[payment] Client '{}' read timed out", context.clientFd);
         } else {
             Logger::ACK()->warn("[payment] Client '{}' read failed: {}", context.clientFd,
                                 strerror(-bytesRead));

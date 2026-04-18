@@ -1,5 +1,4 @@
 #include "Logger.h"
-
 #include "NetworkEngine.h"
 #include "PaymentHandler.h"
 
