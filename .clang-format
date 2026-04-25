@@ -5,6 +5,15 @@ IndentWidth: 4
 AlignAfterOpenBracket: Align
 IncludeBlocks: Preserve
 ColumnLimit: 100
+AlignTrailingComments:
+  Kind: Leave
+  OverEmptyLines: 0
+AlignConsecutiveDeclarations:
+  Enabled: false
+  AcrossEmptyLines: false
+  AcrossComments: false
+  AlignCompound: false
+  AlignFunctionPointers: false
 NamespaceIndentation: None
 ...
 
